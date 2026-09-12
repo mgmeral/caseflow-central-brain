@@ -21,6 +21,9 @@ Repository-specific implementation instructions that belong in service-specific 
 - Authorization is permission-code based (`permissionCodes`) — never gate behavior on role name in any repository.
 - If required context is missing, write: `TODO: Define this decision.`
 
+## Agent Orchestration (Phase 1 — manual)
+This repository runs a Phase 1 (manual) AI Agent Orchestration system: [../skills/](../skills/) defines how a request becomes a task graph, [../workflows/](../workflows/) defines task states/dependencies/handoff, [../tasks/templates/](../tasks/templates/) defines the task file shape, and [AGENT-OWNERSHIP.md](AGENT-OWNERSHIP.md) defines which provider owns which repository by default. Phase 1 is explicitly manual — no agent here should attempt to automatically trigger another agent/provider; a human mediates every handoff per [../workflows/AGENT-HANDOFF.md](../workflows/AGENT-HANDOFF.md). See [../workflows/PHASE-2-AUTOMATION.md](../workflows/PHASE-2-AUTOMATION.md) for the (unimplemented) design of what could eventually change that.
+
 ## Multi-agent coordination
 - Before starting cross-repository work, check [tasks/active/](../tasks/active/) for related in-flight work from another agent, and [features/](../features/) for the feature's declared scope and repos affected.
 - When you learn something that changes shared understanding (a contract shape, a domain rule, an architectural decision), update the matching file here in the same change — do not leave it only in your own conversation/PR description.
