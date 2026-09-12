@@ -26,7 +26,7 @@ Use this repository to keep cross-repository knowledge in one place and avoid co
 1. Architecture decisions belong in `docs/architecture`.
 2. Product/domain definitions belong in `docs/product`.
 3. API and event contracts belong in `contracts`.
-4. Architectural decisions belong in `decisions`.
+4. Architecture Decision Records (ADRs) belong in `decisions`.
 5. Cross-repository features belong in `features`.
 6. Current implementation work belongs in `tasks`.
 7. AI behavior and repository-specific instructions belong in `agents`.
