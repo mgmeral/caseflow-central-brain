@@ -10,31 +10,32 @@ Mobile responsibilities, platform boundaries, and shared integration assumptions
 Mobile contributors and AI agents that coordinate mobile-facing features with backend/frontend/AI services.
 
 ## What should NOT be stored here
-Platform-specific code snippets, build scripts, or implementation-only details.
+Platform-specific code snippets, build scripts, or implementation-only details — see [repos/mobile/](../../repos/mobile/).
 
 ## Responsibility
-TODO: Define this decision.
+`caseflow-mobile` is the Phase 1 mobile client foundation for agents — Home, Cases, Inbox, Customers, Notifications, Profile. It holds no domain data of its own and follows the **exact same backend auth contract** as `caseflow-fe` (no separate mobile-only auth flow).
 
 ## Components
-TODO: Define this decision.
+Expo-based React Native + TypeScript, React Navigation, TanStack Query, Zustand session store backed by `expo-secure-store`. Full detail: [repos/mobile/README.md](../../repos/mobile/README.md).
 
 ## Dependencies
-TODO: Define this decision.
+`caseflow-be` REST API only (`EXPO_PUBLIC_API_BASE_URL`). Never calls `caseflow-ai-service` directly, mirroring the frontend boundary.
 
 ## Communication
-TODO: Define this decision.
+`POST /api/auth/login`, `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/auth/me` — identical contract to `caseflow-fe`. Does not implement OIDC/PKCE, since the backend does not expose that flow. Conversation/email-thread rendering adapts the same `GET /tickets/{id}/email/thread` contract used by the web FE.
 
 ## Data ownership
-TODO: Define this decision.
+None — pure client of `caseflow-be`, same as `caseflow-fe`.
 
 ## External integrations
-TODO: Define this decision.
+None directly. `EXPO_PUBLIC_ENABLE_AI` / `EXPO_PUBLIC_ENABLE_PUSH` flags gate features that ultimately depend on backend/AI-service support, not on any mobile-side integration.
 
 ## Security considerations
-TODO: Define this decision.
+Session/token storage uses `expo-secure-store` (not plain AsyncStorage). Same permission-code gating discipline as the web frontend applies (`ADMIN_POOL_VIEW` gates the Inbox tab, for example) — never gate on role name.
 
 ## Observability
-TODO: Define this decision.
+Relies on backend-issued correlation IDs when reporting cross-system issues; no mobile-specific telemetry defined yet.
 
 ## Open questions
-- TODO: Define this decision.
+- Push notifications and reply-with-attachment flows are explicitly deferred, pending backend support.
+- No mobile-specific rate limiting, offline-queue, or background-sync strategy defined yet.
