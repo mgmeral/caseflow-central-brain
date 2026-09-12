@@ -11,7 +11,7 @@ CaseFlow is a multi-application product that coordinates workflow across backend
 - `caseflow-ai-service` — AI Service
 - `caseflow-mobil` — Mobile Application
 
-Each app repository keeps only a one-line pointer `README.md` back into this repository's `repos/<name>/` — see [Single Source of Truth](#single-source-of-truth-for-documentation) below. No other `.md` files should exist in an app repository.
+Each app repository keeps only a one-line pointer `README.md` back into this repository's `repos/<name>/` — see [Single Source of Truth](#single-source-of-truth-for-documentation) below. No other `.md` files should exist in an app repository, **except each repository's own AI-agent bootstrap file** (`caseflow-be/CLAUDE.md`, `caseflow-fe/.github/copilot-instructions.md`, `caseflow-mobil/.github/copilot-instructions.md`) — these are the standard, tool-expected locations for Claude Code / GitHub Copilot instructions respectively, are intentionally lightweight (execution rules + pointers into this repository, not a copy of its content), and should not be migrated here or deleted as "stray docs."
 
 **Start here for a fast cross-repo orientation:** [repos/repository-context.md](repos/repository-context.md) (AI-agent-optimized summary), [repos/repository-map.md](repos/repository-map.md) (per-repo facts), [repos/dependency-map.md](repos/dependency-map.md) (who depends on whom), [repos/integration-map.md](repos/integration-map.md) (verified cross-repo endpoints/events), and [agents/CROSS-REPOSITORY-CHANGE.md](agents/CROSS-REPOSITORY-CHANGE.md) (the workflow for any change spanning more than one repository).
 
