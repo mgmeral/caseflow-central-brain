@@ -224,6 +224,32 @@ Pipeline jobs:
 
 Image tagging: `sha-<short-sha>`, `latest` (main/master only), branch name
 
+## External Verification Pass — 2026-09-12
+
+The entries above (through P4, 2026-03-29) are the last first-party changelog update to this file. A read-only source inspection on 2026-09-12 (for a central-brain sync, not an implementation change) confirmed the backend has grown substantially since, with **44 Flyway migrations now present (V1–V44)** vs. the V14 baseline this file last documented. Confirmed additions not previously logged here, at a summary level (no version-by-version detail available without the intervening changelog entries this file doesn't have):
+
+- **SLA**: policy config + breach-checking scheduled job, SLA fields on `Ticket`, full CRUD controller (`/api/admin/sla/policies`).
+- **Tags**: `Tag`/`TicketTag` entities, tag CRUD + per-ticket assignment endpoints.
+- **Automation rules**: a rules engine module (`automation/`) — exact trigger/action model not verified in this pass.
+- **In-app notifications**: `UserNotification` entity + controller, polled by both FE and mobile.
+- **Jira integration**: issue creation/linking from tickets, admin config, via the durable `IntegrationJob` queue.
+- **Notification channels**: Slack/Teams/generic-webhook outbound delivery, same job-queue mechanism.
+- **AI integration** (`ai/` module): REST client to the separate `caseflow-ai-service` with circuit breaker + retry + Postgres response cache, plus an **optional Kafka producer** (3 topics, disabled by default) as an async ingestion lane — see [ADR-0004](../../decisions/0004-optional-kafka-ai-ingestion-lane.md).
+- **Ticket merge/split**: `parentTicketId`, `mergedAt`, `mergedBy` fields.
+- **Dashboard/reporting**: `DashboardController`, `AdminReportController`, `CustomerReportController`, `QueueController`, `BulkTicketActionController`.
+- **Mail templates + scheduled email**: reusable reply templates with preview; delayed-send outbound replies.
+- **Security hardening**: rate limiting (Bucket4j, in-process), account lockout, security audit log table, HSTS/CSP/security headers.
+- **Testing**: Testcontainers (PostgreSQL + MongoDB) now present in the build (~95 test files total) — though see the CI note below.
+
+Confirmed still true / unchanged since P4:
+- No Redis anywhere (verified by repo-wide grep).
+- No multi-tenancy mechanism (`Customer` remains a business entity, not a tenant-isolation boundary).
+- Modular monolith, one deployable unit — not microservices.
+
+New open question surfaced by this pass: CI (`.github/workflows/ci.yml`) comments that tests require no real databases, which is in tension with the Testcontainers (PostgreSQL + MongoDB) dependencies and multiple `*IntegrationTest` classes present in the build — not resolved by this inspection; flagged for the backend team.
+
+Full detail on all of the above: [module-map.md](module-map.md#modules-added-since-the-original-map-verified-2026-09-12), [../../docs/architecture/backend.md](../../docs/architecture/backend.md), [../../docs/architecture/system-overview.md](../../docs/architecture/system-overview.md), [../integration-map.md](../integration-map.md), [../dependency-map.md](../dependency-map.md).
+
 ## Remaining Gaps / Known Issues
 
-See `.ai/remaining-issues.md`
+See [remaining-issues.md](remaining-issues.md).

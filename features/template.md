@@ -10,7 +10,7 @@ What is included and excluded?
 - caseflow-be
 - caseflow-fe
 - caseflow-ai-service
-- caseflow-mobile
+- caseflow-mobil
 
 ## Contract Impact
 List impacted API/event/schema contracts, or write: None.

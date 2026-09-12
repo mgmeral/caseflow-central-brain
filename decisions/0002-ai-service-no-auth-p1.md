@@ -26,6 +26,9 @@ Phase 2 (P2) will add token-based service authentication (shared secret header, 
 - Ops/deployment docs and the `caseflow-central-brain` security overview must keep this restriction visible until P2 ships.
 - When P2 lands, this ADR should be superseded and the AI service agent instructions updated.
 
+## Update (2026-09-12 verification pass)
+P2 groundwork has partially landed but is **not enabled**: `caseflow-ai-service` now contains `InternalAuthConfig`, a servlet filter requiring an `X-Internal-Api-Key` header on `/api/*`, gated by `caseflow.ai.auth.enabled` (default `false`). This is scaffolding only — `caseflow-be`'s AI client (`CaseflowAiClient`) does not currently send this header even if the flag were flipped, and no Spring Security dependency exists in `caseflow-ai-service` at all. The P1 risk accepted above therefore still applies in full; do not treat the existence of this filter class as P2 being "done." Enabling it requires a coordinated change in both repositories (see [agents/CROSS-REPOSITORY-CHANGE.md](../agents/CROSS-REPOSITORY-CHANGE.md)) and should still supersede this ADR when it happens.
+
 ## Affected Repositories
 - caseflow-ai-service
 - caseflow-be (the only permitted caller)

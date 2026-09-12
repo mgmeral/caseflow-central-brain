@@ -319,6 +319,33 @@ Used by:
 
 ---
 
+# Modules Added Since the Original Map (verified 2026-09-12)
+
+The sections above (`common` through `storage`) were the original 8-module map. Source inspection on 2026-09-12 confirmed the backend has grown substantially beyond them. These additions are documented here at a summary level; they have not yet received the same per-module rules/depends-on treatment as the original 8 — treat that as a documentation gap to close, not evidence the modules themselves are undocumented elsewhere (see [current-state.md](current-state.md) and [../integration-map.md](../integration-map.md) for what is independently confirmed about each).
+
+## 9. sla
+Package: `com.caseflow.sla`. SLA policy configuration (`SlaPolicyConfig`) and breach detection (`SlaEventLog`, `SlaBreachCheckerJob` — a `@Scheduled` job, default 5 min interval). First-response/resolution due dates and actuals are stamped directly onto `Ticket` at creation from the applicable policy. `SlaPolicyController` exposes full CRUD at `/api/admin/sla/policies` plus a `/backfill` endpoint. **The frontend does not yet build a UI on this CRUD** — see [../../docs/architecture/frontend.md](../../docs/architecture/frontend.md).
+
+## 10. automation
+Package: `com.caseflow.automation`. A rules engine (`AutomationRuleController`, `AutomationRule` entity, `automation/engine`) that can act on tickets automatically. `UNKNOWN: exact trigger/condition/action model` — not inspected in depth in the 2026-09-12 pass.
+
+## 11. notification
+Package: `com.caseflow.notification`. In-app, per-user notification records (`UserNotification` entity) — distinct from `integration/notification` below. `NotificationController` (`/api/notifications`): list, unread-count, mark-read, mark-all-read. Polled (not pushed) by both `caseflow-fe` and `caseflow-mobil`.
+
+## 12. integration
+Package: `com.caseflow.integration`. Two sub-modules, both delivered via a shared durable job queue:
+- `integration/jira` — `JiraController` (`/api/tickets/{ticketPublicId}/jira`: status/create/retry), `JiraAdminController` (config), `JiraConfig`/`TicketJiraLink` entities. `UNKNOWN: exact outbound Jira REST endpoints` — not verified in depth.
+- `integration/notification` — Slack/Teams/generic-webhook channel config (`NotificationChannelConfig` entity, `NotificationChannelConfigController`) and delivery processors (`{Slack,Teams,Webhook}NotificationJobProcessor`).
+- Shared mechanism: `IntegrationJob` entity — a Postgres-backed outbox/worker-queue pattern (`PESSIMISTIC_WRITE` + `SKIP LOCKED` claiming, idempotency keys, attempt/backoff bookkeeping), processed by `integration/scheduler/IntegrationJobWorker` (`@Scheduled`, default 30s). This is the dominant async mechanism in the codebase — not Kafka, not a pub/sub bus.
+
+## 13. ai
+Package: `com.caseflow.ai`. Client to the separate `caseflow-ai-service` — **not** an embedded LLM client (no Spring AI dependency here). `AiAssistantController` (`/api/tickets/{ticketId}`: `ai-summary`, `ai-reply-draft`, `ai-similar-cases`, `ai-policy-guidance`) enforces: FE never calls the AI service directly; responses are backend-owned stable DTOs, not raw AI payloads; AI failures degrade gracefully (`200` with `metadata.available=false`); AI must never auto-send email, change ticket status, or assign tickets (documented invariants in the controller's own Javadoc — treat as binding). `CaseflowAiClient` wraps the synchronous REST call in a circuit breaker (Resilience4j) + retry (Spring Retry). `TicketAiResponseCache` (Postgres) caches responses. An optional Kafka producer (`KafkaAiEventPublisher`, disabled by default) provides an async ingestion lane — see [ADR-0004](../../decisions/0004-optional-kafka-ai-ingestion-lane.md).
+
+## Ticket module additions
+The original `ticket` module description above predates: tags (`TicketTagController`, `Tag`/`TicketTag` entities), dashboard/reporting (`DashboardController`, `AdminReportController`, `CustomerReportController`), queue views (`QueueController`), bulk actions (`BulkTicketActionController`), and ticket merge/split (`parentTicketId`, `mergedAt`, `mergedBy` fields on `Ticket`). These live in the `ticket` package alongside the original core aggregate — no new top-level module was created for them.
+
+---
+
 # High-Level Dependency Direction
 
 Allowed dependency direction:

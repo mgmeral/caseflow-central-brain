@@ -39,6 +39,16 @@ AI orchestration layer for CaseFlow customer support ticket workflows, built wit
 
 `/similar-cases` and `/policy-guidance` perform vector search against **Qdrant** and return empty results until policies/resolved tickets are ingested via `/api/ai/ingest/documents` or `/api/ai/ingest/tickets`.
 
+> **Verified 2026-09-12 — RAG is not uniform across the 4 endpoints.** `/summary` and `/reply-draft` are plain LLM completions (Ollama via Spring AI `ChatClient`) built entirely from the caller-supplied request body — **no Qdrant lookup happens for these two**, despite living on the same controller. Only `/similar-cases` (pure retrieval, no LLM call) and `/policy-guidance` (retrieval + generation, with an anti-hallucination guard that skips the LLM entirely when no policy docs are found) are genuinely retrieval-augmented. Full detail: [../../docs/architecture/ai-service.md](../../docs/architecture/ai-service.md).
+>
+> Spring AI version in use is **1.0.0-M6** — a milestone/pre-GA release (requires Spring Milestones/Snapshots Maven repos, not on Maven Central).
+>
+> An optional Kafka consumer lane exists for async ingestion (3 topics, mirrored by a producer in `caseflow-be`), **disabled by default** via `caseflow.ai.async.enabled=false` on both sides — see [ADR-0004](../../decisions/0004-optional-kafka-ai-ingestion-lane.md) and [../../contracts/events/README.md](../../contracts/events/README.md). No idempotency/dedup exists on the consumer side yet.
+>
+> An internal-API-key auth filter (`InternalAuthConfig`, header `X-Internal-Api-Key`) exists in code but is disabled by default (`caseflow.ai.auth.enabled=false`), and `caseflow-be`'s client does not currently send this header — see [ADR-0002](../../decisions/0002-ai-service-no-auth-p1.md).
+>
+> No caching layer exists (every call re-invokes the LLM/vector store), and no generated summary/draft/answer is ever persisted. `RagSearchService` in source is dead code, superseded by `RetrievalService`.
+
 ## Local startup (without Docker)
 
 Prerequisites: Java 21+, Maven 3.9+, [Ollama](https://ollama.ai) on port 11434, [Qdrant](https://qdrant.tech) on HTTP 6333 / gRPC 6334.
@@ -76,6 +86,15 @@ Ingest: `POST /api/ai/ingest/documents`, `POST /api/ai/ingest/tickets`
 Health: `GET /api/ai/health/ready`, `GET /api/ai/health/models`
 
 See Swagger UI for full request/response schemas.
+
+## Additional environment variables (verified 2026-09-12, not previously documented here)
+
+| Variable | Default | Description |
+|---|---|---|
+| `ASYNC_ENABLED` / `caseflow.ai.async.enabled` | `false` | Master toggle for the Kafka consumer lane (3 topics). Disabled → zero Kafka runtime dependency. |
+| `caseflow.ai.auth.enabled` | `false` | Master toggle for the internal-API-key auth filter. Disabled → every endpoint is unauthenticated. |
+| `caseflow.ai.retrieval.similarity-threshold` | `0.6` | Minimum similarity score for retrieval matches (similar-cases, policy-guidance). |
+| `caseflow.ai.default-top-k` | `5` | Default retrieval result count when a caller doesn't specify `topK`. |
 
 ## Environment variables
 

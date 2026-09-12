@@ -28,10 +28,13 @@ For each finding output: Severity, File/path, Problem, Why it matters, Concrete 
 - Routing owner is Customer, not Contact (see [ADR-0001](../decisions/0001-customer-based-email-routing.md)).
 - Reply target should come from actual message context.
 - FE must not fake richer email features than backend supports.
-- Ticket status transitions must be business-valid, not purely linear.
+- Ticket status transitions must be business-valid, not purely linear — see the verified matrix in [repos/backend/ticket-rules.md](../repos/backend/ticket-rules.md); don't approve a change that hardcodes a different transition set client-side instead of calling `GET /tickets/{id}/transitions`.
 - One storage bucket per env/app; prefixes per ticket/email, not bucket per ticket.
 - Numeric DB PK may remain; public UUID is preferred for external/storage identity.
 - Permissions (`permissionCodes`) are the source of truth, not role labels — never gate UI/API on role name.
+- Do not describe or imply that `/ai-summary`/`/ai-reply-draft` are retrieval-augmented — they are plain LLM completions. Only `/ai-similar-cases`/`/ai-policy-guidance` touch the vector store (see [docs/architecture/ai-service.md](../docs/architecture/ai-service.md)). Flag any change that blurs this distinction in docs or code comments.
+- `caseflow-fe` does not currently use its issued refresh token — if a change touches auth/session handling, don't assume a refresh flow exists unless it's being added in the same change.
+- Enabling the Kafka async-ingestion lane (`caseflow.ai.async.enabled`) on only one of `caseflow-be`/`caseflow-ai-service` is a misconfiguration — flag a PR that flips this on one side without the other.
 
 ## Do not approve changes that
 - silently break FE contracts

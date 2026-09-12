@@ -12,4 +12,4 @@ AI agents and engineers authoring prompts or workflows that rely on shared conte
 ## What should NOT be stored here
 Secrets, private credentials, or implementation code.
 
-See `GLOBAL.md` and repository-specific files ([BACKEND.md](BACKEND.md), [FRONTEND.md](FRONTEND.md), [AI-SERVICE.md](AI-SERVICE.md), [MOBILE.md](MOBILE.md)) for scoped guidance, and [CODE-REVIEW.md](CODE-REVIEW.md) for the cross-repository code review agent persona/checklist.
+See `GLOBAL.md` and repository-specific files ([BACKEND.md](BACKEND.md), [FRONTEND.md](FRONTEND.md), [AI-SERVICE.md](AI-SERVICE.md), [MOBILE.md](MOBILE.md)) for scoped guidance, [CODE-REVIEW.md](CODE-REVIEW.md) for the cross-repository code review agent persona/checklist, and [CROSS-REPOSITORY-CHANGE.md](CROSS-REPOSITORY-CHANGE.md) for the standard workflow when a change spans more than one repository.

@@ -23,7 +23,7 @@ What are the expected trade-offs, impacts, and follow-up actions?
 - caseflow-be
 - caseflow-fe
 - caseflow-ai-service
-- caseflow-mobile
+- caseflow-mobil
 
 ## Related Contracts / Features / Tasks
 List links to related files in `contracts/`, `features/`, and `tasks/`.

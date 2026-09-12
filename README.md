@@ -13,6 +13,8 @@ CaseFlow is a multi-application product that coordinates workflow across backend
 
 Each app repository keeps only a one-line pointer `README.md` back into this repository's `repos/<name>/` — see [Single Source of Truth](#single-source-of-truth-for-documentation) below. No other `.md` files should exist in an app repository.
 
+**Start here for a fast cross-repo orientation:** [repos/repository-context.md](repos/repository-context.md) (AI-agent-optimized summary), [repos/repository-map.md](repos/repository-map.md) (per-repo facts), [repos/dependency-map.md](repos/dependency-map.md) (who depends on whom), [repos/integration-map.md](repos/integration-map.md) (verified cross-repo endpoints/events), and [agents/CROSS-REPOSITORY-CHANGE.md](agents/CROSS-REPOSITORY-CHANGE.md) (the workflow for any change spanning more than one repository).
+
 ## Why this repository exists
 
 Use this repository to keep cross-repository knowledge in one place and avoid conflicting assumptions between teams and AI agents — including multiple agents working in parallel across `caseflow-be`, `caseflow-fe`, `caseflow-ai-service`, and `caseflow-mobil` at the same time.

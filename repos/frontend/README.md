@@ -75,7 +75,14 @@ docker run --rm -p 8081:80 csm-crm-fe
 
 ## API contract
 
-Full endpoint list, auth model, role-based access, and known V2-deferred limitations (auth deploy status, template management, role-edit persistence, pagination/sort caveats, outbound email replies, customer ticket lookup) are the backend's responsibility to define — see [../backend/frontend-contract.md](../backend/frontend-contract.md) and [../backend/api-endpoints.md](../backend/api-endpoints.md) for the authoritative, backend-verified contract. Auth token is stored under `localStorage` key `csm-auth` via Zustand `persist`; a 401 from any query/mutation clears auth state and redirects to `/login`.
+Full endpoint list, auth model, role-based access are the backend's responsibility to define — see [../backend/frontend-contract.md](../backend/frontend-contract.md) and [../integration-map.md](../integration-map.md) for the authoritative, backend-verified contract (the latter also covers newer endpoint groups — Jira, SLA, tags, automation, dashboard/reports — not yet in `frontend-contract.md`'s per-field detail). Auth token (both access and refresh) is stored under `localStorage` key `csm-auth` via Zustand `persist`; a 401 from any query/mutation clears auth state and redirects to `/login`.
+
+**Verified 2026-09-12 gaps:**
+- **No refresh-token flow is implemented** — the refresh token is stored but only ever re-read to send with the logout call. Any 401 triggers immediate logout rather than a silent refresh-and-retry (contrast with `caseflow-mobil`, which does implement this).
+- **`VITE_USE_MOCKS` no longer does what its own `.env.example` comment describes** — it only toggles the Vite dev-server's `/api` proxy; there is no client-side mock-data-serving code path in `src/` (the `src/mock/` fixtures are used only by unit tests).
+- **`/admin/sla-policy` is a static explainer page**, not a working SLA policy CRUD UI, despite being a real permission-gated route — the backend has full SLA policy CRUD that this page does not call.
+- **AI "similar cases" and "policy guidance"** are commented in `ai.service.ts` as "Phase 2 — not implemented until BE is ready," but both are already fully implemented on `caseflow-be`/`caseflow-ai-service` — this is a frontend-side gap, not a backend-readiness gap.
+- Real feature areas confirmed wired to actual backend endpoints (not mocked): tickets, customers, email (thread/reply/templates/scheduled-send), notifications, dashboard/reports (incl. client-side PDF export), user/role/group admin, Jira integration, notification-channel (Slack/Teams/webhook) admin, tags, ingress-event ops.
 
 Route protection: `admin` → all routes; `supervisor` → all except `/admin/*`; `trade_agent`/`operation_agent` → tickets, customers, reports; `viewer` → read-only. Enforced in `src/router/index.tsx` via `ProtectedRoute`. **Gate features on backend `permissionCodes`, never on role name — see [../backend/frontend-contract.md](../backend/frontend-contract.md).**
 

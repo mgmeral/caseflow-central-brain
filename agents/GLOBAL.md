@@ -7,15 +7,17 @@ Defines baseline instructions that apply to all CaseFlow AI agents.
 Shared rules, terminology, source-of-truth usage expectations, and cross-repository coordination guidance.
 
 ## Who should use this
-All agents working with `caseflow-be`, `caseflow-fe`, `caseflow-ai-service`, and `caseflow-mobile`.
+All agents working with `caseflow-be`, `caseflow-fe`, `caseflow-ai-service`, and `caseflow-mobil`.
 
 ## What should NOT be stored here
 Repository-specific implementation instructions that belong in service-specific agent files ([BACKEND.md](BACKEND.md), [FRONTEND.md](FRONTEND.md), [AI-SERVICE.md](AI-SERVICE.md), [MOBILE.md](MOBILE.md)).
 
 ## Baseline
+- For a fast cross-repo orientation before diving into a specific doc, read [../repos/repository-context.md](../repos/repository-context.md), [../repos/repository-map.md](../repos/repository-map.md), [../repos/dependency-map.md](../repos/dependency-map.md), and [../repos/integration-map.md](../repos/integration-map.md) — these are verified against actual repository source (last full pass: 2026-09-12) and are the fastest way to avoid stale assumptions.
+- For any change spanning more than one repository, follow [CROSS-REPOSITORY-CHANGE.md](CROSS-REPOSITORY-CHANGE.md).
 - Read this repository (`caseflow-central-brain`) before making cross-repository assumptions. **No other repository should contain its own architecture/rules/prompt `.md` files** — all of that content lives here, under `repos/<name>/` for repo-internal detail and `docs/`/`contracts/`/`decisions/` for cross-repo agreements. If you find a stray `.md` file reappearing in an app repo, migrate its content here and leave only a one-line pointer README behind, per the pattern in [repos/backend/](../repos/backend/), [repos/frontend/](../repos/frontend/), [repos/ai-service/](../repos/ai-service/), [repos/mobile/](../repos/mobile/).
 - Follow contracts ([contracts/](../contracts/)) and ADRs ([decisions/](../decisions/)) before proposing interface changes.
-- `caseflow-be` is the source of truth for domain data and the API contract; `caseflow-fe`, `caseflow-mobile`, and `caseflow-ai-service` are clients of it (`caseflow-ai-service` is called only by `caseflow-be`, never by FE/mobile directly — see [ADR-0002](../decisions/0002-ai-service-no-auth-p1.md)).
+- `caseflow-be` is the source of truth for domain data and the API contract; `caseflow-fe`, `caseflow-mobil`, and `caseflow-ai-service` are clients of it (`caseflow-ai-service` is called only by `caseflow-be`, never by FE/mobile directly — see [ADR-0002](../decisions/0002-ai-service-no-auth-p1.md)).
 - Authorization is permission-code based (`permissionCodes`) — never gate behavior on role name in any repository.
 - If required context is missing, write: `TODO: Define this decision.`
 

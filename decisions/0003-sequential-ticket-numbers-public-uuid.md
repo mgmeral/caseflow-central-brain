@@ -25,7 +25,7 @@ Ticket numbers need to be human-friendly and collision-free (`TKT-0000001` style
 ## Affected Repositories
 - caseflow-be
 - caseflow-fe (ticket number display)
-- caseflow-mobile (ticket number display)
+- caseflow-mobil (ticket number display)
 
 ## Related Contracts / Features / Tasks
 - [repos/backend/current-state.md](../repos/backend/current-state.md)

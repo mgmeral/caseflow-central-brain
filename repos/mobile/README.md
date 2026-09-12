@@ -77,3 +77,15 @@ Does **not** implement OIDC/PKCE — the backend does not currently expose that 
 - Inbox tab is shown only when the signed-in user has `ADMIN_POOL_VIEW`.
 - Conversation rendering currently adapts the backend's email-thread contract (`GET /tickets/{id}/email/thread`).
 - Push notifications and reply attachments remain backend-dependent follow-up work.
+
+## Verified 2026-09-12 — implemented vs. inert scaffolding
+
+**Real, backend-wired:** login/refresh/logout (with automatic 401-retry-after-refresh — ahead of the web frontend, which has no refresh flow at all), dashboard stats, case list + read-only case detail + SLA display, email-thread conversation view (read-only), customer list, admin-pool queue + stats, in-app notifications (15s polling), permission-based tab visibility.
+
+**Present but not actually working — do not assume these are shipped features:**
+- **Push notifications** — `EXPO_PUBLIC_ENABLE_PUSH` env flag exists but is never read anywhere in `src/`; no push library, permission request, or device-token registration exists at all.
+- **Biometric unlock** — `expo-local-authentication` only checks device capability and flips a stored preference toggle in `ProfileScreen`; `authenticateAsync` (the actual prompt) is never called. It does not gate anything. The screen's own subtitle says "preference only."
+- **`EXPO_PUBLIC_ENABLE_AI`** — defined (default `true`), never consumed anywhere in `src/`. There is no AI feature in this app.
+- **Ticket workflow** — entirely read-only. `getCaseTransitions()` (`GET /tickets/{id}/transitions`) is implemented in the API layer but never called from any screen; there is no status-change, assignment, or reply/compose UI.
+
+Full detail: [../../docs/architecture/mobile.md](../../docs/architecture/mobile.md).

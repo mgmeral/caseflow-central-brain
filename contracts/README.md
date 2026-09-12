@@ -9,7 +9,7 @@ Definitions that must remain consistent across repositories:
 - Shared schemas
 
 ## Who should use this
-Contributors and AI agents changing interfaces between `caseflow-be`, `caseflow-fe`, `caseflow-ai-service`, and `caseflow-mobile`.
+Contributors and AI agents changing interfaces between `caseflow-be`, `caseflow-fe`, `caseflow-ai-service`, and `caseflow-mobil`.
 
 ## What should NOT be stored here
 Implementation code, service internals, or undocumented breaking changes.

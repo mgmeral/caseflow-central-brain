@@ -8,6 +8,8 @@
 > All shapes are derived from actual Java code, not assumptions.
 > When in doubt, verify against Swagger UI or the controller source.
 
+> **Verification status (2026-09-12):** the Auth Flow, Permission Catalog, Pagination, Error Response, and Email Platform sections below were re-verified against current backend source and are current. The backend has since grown a substantial set of additional controller groups — Jira integration, SLA policy CRUD, tags, automation rules, dashboard/reports, mail templates, scheduled email, notification-channel config, in-app notifications — that are **not yet documented in per-field detail in this file**. See [../integration-map.md](../integration-map.md) for a verified summary of those endpoint groups (base paths, permission codes where known, and what's `TODO: Verify`), and treat exact request/response shapes for them as unverified until confirmed against Swagger UI or the controller/DTO source directly. Also note: `MatchingStrategy`/`CONTACT_FIRST` (referenced further below in an older example) were **removed from the backend** — routing is customer-rule-based only, never contact-based — see [ADR-0001](../../decisions/0001-customer-based-email-routing.md).
+
 ---
 
 ## Base URL
@@ -139,6 +141,17 @@ The backend enforces `PERM_<code>` Spring Security authorities. The FE uses the 
 | `EMAIL_OPERATIONS_MANAGE`   | Replay / quarantine / release ingress events; `POST /emails/ingest` |
 | `TICKET_EMAIL_VIEW`         | `GET /tickets/{id}/email/thread` and detail endpoints              |
 | `TICKET_EMAIL_REPLY_SEND`   | `POST /tickets/{id}/email/reply`                                   |
+| `AI_ASSIST`                 | `/tickets/{id}/ai-summary`, `/ai-reply-draft`, `/ai-similar-cases`, `/ai-policy-guidance` |
+| `TICKET_TAG`                | Tag add/remove endpoints on a ticket                                |
+| `USER_READ`                 | Read-only user endpoints (distinct from `USER_MANAGE`)              |
+| `ATTACHMENT_DELETE`         | Attachment delete endpoint                                          |
+| `INTEGRATION_CONFIG_MANAGE` | Jira/notification-channel admin config (`TODO: Verify` exact code string — FE's `usePermissions.ts` also carries an alias mapping to `PERM_INTEGRATION_CONFIG_MANAGE`) |
+| `SCHEDULED_EMAIL_MANAGE`    | Scheduled/delayed outbound email (`TODO: Verify` exact code string, same alias-mapping caveat as above) |
+| `SETTINGS_MANAGE` (`TODO: Verify` exact code) | SLA policy CRUD (`/api/admin/sla/policies`) — **backend-only today, no FE UI built on it** |
+| `CUSTOMER_MANAGE`           | Customer create/update/activate/deactivate/delete (distinct from `TICKET_READ`-gated customer reads) |
+| `REPORT_VIEW` / `DATA_EXPORT` | Reports page + PDF export gating |
+
+The full ~29-code permission catalog lives in the backend's `identity/domain/Permission.java` enum — the table above adds the codes confirmed in the 2026-09-12 pass beyond what was previously documented here; it is not necessarily exhaustive. Verify against `GET /auth/me`'s actual `permissionCodes` response or the enum source when precision matters.
 
 ### Starter role defaults (seeded by V10 migration)
 
@@ -419,6 +432,29 @@ Stage-2 processing (routing, ticket creation) runs asynchronously via the retry 
 - `POST /api/tickets/{id}/transfer` — `TICKET_TRANSFER`
 - `POST/GET/DELETE /api/attachments` — `TICKET_READ`
 
+### AI Assist (`/api/tickets/{ticketId}`) — `AI_ASSIST` + `@ticketAuth.canReadTicket`
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/ai-summary` | Plain LLM completion, not RAG — see [../../docs/architecture/ai-service.md](../../docs/architecture/ai-service.md) |
+| POST | `/ai-reply-draft` | Plain LLM completion, not RAG |
+| GET | `/ai-similar-cases` | Genuine retrieval — **implemented backend-side, not yet called by the FE** |
+| POST | `/ai-policy-guidance` | Genuine retrieval-augmented generation — **implemented backend-side, not yet called by the FE** |
+
+Response is always a backend-owned stable DTO (never the raw AI-service payload) and always degrades gracefully (`200` with `metadata.available=false`) rather than surfacing an AI-service error.
+
+### Newer endpoint groups (summary only — see [../integration-map.md](../integration-map.md), per-field shapes `TODO: Verify`)
+
+- SLA policies: `/api/admin/sla/policies` (CRUD) — no FE UI consumes this yet.
+- Tags: `/api/tags`, `/api/tickets/{id}/tags` — FE UI is real.
+- Jira: `/api/tickets/{ticketPublicId}/jira`, `/api/admin/integrations/jira/*` — FE UI is real.
+- Notification channels (Slack/Teams/webhook): `/api/admin/integrations/channels/*` — FE UI is real.
+- In-app notifications: `/api/notifications/*` — FE UI is real (polling).
+- Mail templates: `/api/admin/mail-templates/*` — FE UI is real.
+- Scheduled email: `/api/tickets/{publicId}/scheduled-emails` — FE UI is real.
+- Dashboard/reports: `/api/dashboard/stats`, `/api/customers/{id}/reports/tickets`, `/api/admin/reports/customers/tickets` — FE UI is real (PDF export is client-side).
+- Automation rules: backend controller exists (`AutomationRuleController`); `UNKNOWN: FE consumption status`, not verified this pass.
+
 ---
 
 ## Key Response Shapes
@@ -478,12 +514,12 @@ Stage-2 processing (routing, ticket creation) runs asynchronously via the retry 
 `smtpPassword` is **never** in the response.
 
 ### `CustomerEmailSettingsResponse`
+> **Corrected 2026-09-12**: `matchingStrategy`, `trustedContactsOnly`, and `autoCreateContact` were removed from the backend entity/DTO in a later change (contact-based routing was deleted entirely — see [ADR-0001](../../decisions/0001-customer-based-email-routing.md)). The example below reflects the corrected, contact-free shape.
 ```json
 {
   "id": 1, "customerId": 5,
-  "unknownSenderPolicy": "MANUAL_REVIEW", "matchingStrategy": "CONTACT_FIRST",
-  "isActive": true, "trustedContactsOnly": false,
-  "autoCreateContact": false, "allowSubdomains": false,
+  "unknownSenderPolicy": "MANUAL_REVIEW",
+  "isActive": true, "allowSubdomains": false,
   "defaultGroupId": 3, "defaultPriority": "MEDIUM",
   "updatedAt": "2026-03-29T08:00:00Z",
   "rules": [
@@ -544,9 +580,9 @@ ProviderType        : SMTP_RELAY | SENDGRID | MAILGUN
 InboundMode         : WEBHOOK | IMAP_POLL | MANUAL
 OutboundMode        : SMTP | API
 SenderMatchType     : EXACT_EMAIL | DOMAIN
-MatchingStrategy    : CONTACT_FIRST | RULE_FIRST
 UnknownSenderPolicy : MANUAL_REVIEW | IGNORE | REJECT
 ```
+`MatchingStrategy` (`CONTACT_FIRST | RULE_FIRST`) was **removed** from the backend — routing is customer-rule-based only, never contact-based (see [ADR-0001](../../decisions/0001-customer-based-email-routing.md)). Do not reintroduce it in FE types.
 
 All enums serialize as their string name (Spring Boot default).
 

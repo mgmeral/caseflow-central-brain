@@ -1,0 +1,275 @@
+# CaseFlow Core API Contract (partial OpenAPI)
+#
+# PURPOSE: A machine-readable contract for the small set of endpoints verified in the
+# 2026-09-12 source-inspection pass with enough per-field confidence to express as OpenAPI.
+# This is NOT a full API spec — caseflow-be exposes ~38 controllers; only auth, core ticket,
+# and the AI-assist surface are covered here. Everything else is documented at a lower fidelity
+# in repos/backend/frontend-contract.md and repos/integration-map.md, marked TODO: Verify.
+#
+# The live, always-current reference is Swagger UI:
+#   caseflow-be:         http://localhost:8080/swagger-ui.html  (/v3/api-docs)
+#   caseflow-ai-service: http://localhost:8081/swagger-ui.html  (/api-docs)
+# Treat this file as a human-curated, git-reviewable subset for the highest-traffic
+# cross-repository contract, not a replacement for those.
+
+openapi: 3.0.3
+info:
+  title: CaseFlow Core API (partial)
+  version: "2026-09-12"
+  description: >
+    Verified subset of the caseflow-be and caseflow-ai-service REST contracts.
+    Unlisted endpoints exist — see repos/integration-map.md for the full inventory.
+
+servers:
+  - url: http://localhost:8080/api
+    description: caseflow-be (local dev)
+  - url: http://localhost:8081/api
+    description: caseflow-ai-service (local dev, service-to-service only — never called directly by FE/mobile)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    TicketStatus:
+      type: string
+      enum: [NEW, TRIAGED, ASSIGNED, IN_PROGRESS, WAITING_CUSTOMER, RESOLVED, CLOSED, REOPENED]
+    TicketPriority:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, CRITICAL]
+    TokenResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer, description: "seconds" }
+        tokenType: { type: string, example: Bearer }
+    MeResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        email: { type: string }
+        fullName: { type: string }
+        roleId: { type: integer }
+        roleCode: { type: string, description: "Display-only. Never gate behavior on this." }
+        roleName: { type: string, description: "Display-only. Never gate behavior on this." }
+        permissionCodes:
+          type: array
+          items: { type: string }
+          description: "Sole source of truth for client-side authorization."
+        ticketScope: { type: string, enum: [ALL, OWN_GROUPS, OWN_AND_OWN_GROUPS, ASSIGNED_ONLY] }
+        groupIds:
+          type: array
+          items: { type: integer }
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp: { type: string, format: date-time }
+        status: { type: integer }
+        error: { type: string }
+        code: { type: string }
+        message: { type: string }
+        path: { type: string }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
+              rejectedValue: {}
+              code: { type: string }
+        requestId: { type: string }
+    TicketSummaryResponse:
+      type: object
+      description: "Backend-owned stable DTO — never the raw AI-service payload."
+      properties:
+        summary: { type: string }
+        customerIntent: { type: string }
+        keyPoints:
+          type: array
+          items: { type: string }
+        riskSignals:
+          type: array
+          items: { type: string }
+        suggestedNextStep: { type: string }
+        confidence: { type: number, format: float }
+        metadata:
+          type: object
+          properties:
+            available: { type: boolean, description: "false if caseflow-ai-service was unreachable — response still 200." }
+            model: { type: string }
+            promptVersion: { type: string }
+            warnings:
+              type: array
+              items: { type: string }
+
+paths:
+  /auth/login:
+    post:
+      summary: Issue access + refresh token pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+
+  /auth/refresh:
+    post:
+      summary: Rotate refresh token. Old refresh token is revoked immediately.
+      description: >
+        Verified used by caseflow-mobil (automatic 401-retry-after-refresh).
+        NOT used by caseflow-fe as of 2026-09-12 — the web frontend stores this token
+        but never calls this endpoint, so a web session ends on the first 401.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+
+  /auth/me:
+    get:
+      summary: Current user profile and authorization data
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MeResponse" }
+
+  /tickets:
+    get:
+      summary: Paged/filtered ticket list
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20 } }
+        - { name: sort, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/TicketStatus" } }
+        - { name: priority, in: query, schema: { $ref: "#/components/schemas/TicketPriority" } }
+      responses:
+        "200":
+          description: OK
+    post:
+      summary: Create a ticket
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, priority, customerId]
+              properties:
+                subject: { type: string }
+                description: { type: string }
+                priority: { $ref: "#/components/schemas/TicketPriority" }
+                customerId: { type: integer }
+      responses:
+        "201":
+          description: Created
+
+  /tickets/{id}:
+    get:
+      summary: Get ticket by internal id
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /tickets/{id}/transitions:
+    get:
+      summary: Allowed next statuses from the ticket's current status
+      description: >
+        Do not hardcode the transition matrix client-side — this endpoint is the
+        source of truth. See repos/backend/ticket-rules.md for the current matrix
+        (not purely linear).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK }
+
+  /tickets/{id}/ai-summary:
+    get:
+      summary: AI-generated ticket summary (plain LLM completion — NOT retrieval-augmented)
+      description: >
+        Backend-mediated call to caseflow-ai-service's POST /api/ai/tickets/{ticketId}/summary.
+        Always returns 200; check metadata.available for degraded/unavailable state.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK (possibly degraded)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketSummaryResponse" }
+
+  /tickets/{id}/ai-reply-draft:
+    post:
+      summary: AI-drafted customer reply (plain LLM completion — NOT retrieval-augmented)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK (possibly degraded) }
+
+  /tickets/{id}/ai-similar-cases:
+    get:
+      summary: Similar-case retrieval (genuine RAG — pure retrieval, no LLM synthesis)
+      description: >
+        Implemented end-to-end on caseflow-be and caseflow-ai-service.
+        NOT currently called by caseflow-fe (commented "Phase 2" in FE source — stale as of
+        this pass; no backend blocker exists).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK (possibly empty until data is ingested) }
+
+  /tickets/{id}/ai-policy-guidance:
+    post:
+      summary: Policy Q&A (genuine RAG — retrieval + generation, with anti-hallucination guard)
+      description: >
+        Implemented end-to-end on caseflow-be and caseflow-ai-service.
+        NOT currently called by caseflow-fe. Refuses to call the LLM if zero policy
+        documents are retrieved — returns a static "no policy found" response instead.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK (possibly empty until policy documents are ingested) }

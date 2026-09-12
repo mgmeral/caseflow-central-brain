@@ -92,7 +92,15 @@
 
 ## P2 — Important but Non-Blocking
 
-(None)
+### Scheduled-job safety under multi-replica scaling
+- `k8s/hpa.yaml` (autoscaling) exists, but six `@Scheduled` jobs (IMAP polling, email ingress retry, outbound dispatch, SLA breach checker, AI ingest retry, integration job worker) have no distributed-lock guard beyond DB-level `SKIP LOCKED`/`PESSIMISTIC_WRITE` claiming on the job-queue-shaped ones (email/integration workers). The IMAP poller and SLA breach checker were not independently verified as safe under concurrent multi-pod execution.
+- Fix: verify/add a distributed-lock mechanism (e.g. ShedLock) before running this deployment at >1 replica, or confirm existing DB-claim patterns already cover every job.
+
+### Redis absence vs. rate limiting / AI response caching
+- Both rate limiting (Bucket4j) and AI response caching (`TicketAiResponseCache`) are currently single-node (in-process / Postgres-backed respectively). `RateLimitingFilter` already documents this as a known multi-node limitation. Not blocking today but should be revisited before horizontal scaling.
+
+### CI vs. Testcontainers inconsistency
+- CI (`.github/workflows/ci.yml`) states tests require no real databases, but the build depends on Testcontainers (PostgreSQL + MongoDB) and includes multiple `*IntegrationTest` classes. Not resolved by the 2026-09-12 documentation pass — needs a backend-team check of whether these tests are tagged/excluded from the default `mvn verify` run, and if not, whether CI is silently running (and passing) real-database integration tests despite its own comment saying otherwise.
 
 ---
 

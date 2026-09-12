@@ -17,9 +17,9 @@ Vendor-specific dashboard exports or temporary troubleshooting notes.
 - Credentials (SMTP/IMAP passwords, OAuth2 client secrets, JWT tokens) must never appear in logs on any repository — this is a hard rule, not a preference.
 
 ## Metrics expectations
-- `caseflow-be` exposes Micrometer counters for inbound/outbound email (`EmailMetrics`) and standard Spring Boot Actuator metrics.
-- `caseflow-ai-service` exposes `/actuator/health` and `/actuator/info`; model-specific readiness via `/api/ai/health/ready` and `/api/ai/health/models`.
-- No shared metrics backend (Prometheus/Grafana) topology is documented yet across repositories.
+- `caseflow-be` exposes Micrometer counters for inbound/outbound email (`EmailMetrics`) plus a Prometheus registry (`micrometer-registry-prometheus`) and standard Spring Boot Actuator metrics.
+- `caseflow-ai-service` exposes `/actuator/health`, `/actuator/info`, `/actuator/prometheus` (also on a Prometheus registry), plus `AiMetrics` (Micrometer counters) and model-specific readiness via `/api/ai/health/ready` and `/api/ai/health/models`.
+- Both backend repos are Prometheus-scrapable as of the 2026-09-12 verification pass, but no shared Prometheus/Grafana deployment topology (scrape config, dashboards, alert rules) is documented yet across repositories.
 
 ## Tracing expectations
 - No distributed tracing (OpenTelemetry/Zipkin/Jaeger) is implemented yet. Cross-repo correlation today is limited to the `X-Correlation-Id` header — treat this as the minimum bar, not the end state.
