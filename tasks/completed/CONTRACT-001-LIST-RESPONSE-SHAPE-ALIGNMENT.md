@@ -4,7 +4,7 @@
 Fix every confirmed live case where `caseflow-fe` misparses a `caseflow-be` list-endpoint response (silent empty list or wrong URL), convert the one backend endpoint that deviates from the documented pagination envelope, and harden the remaining list-parsing call sites with a shared unwrap utility — bringing every list endpoint into conformance with the cross-cutting pagination convention already documented in `contracts/api/README.md`.
 
 ## Status
-PLANNED
+DONE
 
 ## Priority
 P1 (two confirmed user-facing breakages: Customer Email Settings customer-picker renders empty; Ingress Events admin page is non-functional. Remaining scope is P2 hardening.)
@@ -19,9 +19,9 @@ During local dev bring-up (2026-09-13), `GET /api/users` and `GET /api/customers
 
 | Repository | Agent | Responsibility | Status |
 |---|---|---|---|
-| caseflow-fe | GitHub Copilot | Fix 2 confirmed-broken services + 1 broken-and-misrouted service; extract a shared list-unwrap utility from `role.service.ts`'s private `toArrayPayload`; adopt it across the ~12 other list-parsing call sites identified in Notes | READY |
-| caseflow-be | Claude | Convert `IngressEventAdminController.list` to return `PagedResponse` instead of a raw Spring Data `Page`, matching every other paginated controller | READY |
-| caseflow-central-brain | Codex | Update `repos/backend/frontend-contract.md`'s Pagination section to enumerate every paginated vs. bare-array endpoint explicitly | BLOCKED (needs BE+FE final shapes) |
+| caseflow-fe | Claude | Fix 2 confirmed-broken services + 1 broken-and-misrouted service; extract a shared list-unwrap utility from `role.service.ts`'s private `toArrayPayload`; adopt it across the ~12 other list-parsing call sites identified in Notes | DONE (commit `8cd4313`) |
+| caseflow-be | Claude | Convert `IngressEventAdminController.list` to return `PagedResponse` instead of a raw Spring Data `Page`, matching every other paginated controller | DONE (commit `e823913`) |
+| caseflow-central-brain | Claude | Update `repos/backend/frontend-contract.md`'s Pagination section to enumerate every paginated vs. bare-array endpoint explicitly | DONE |
 | caseflow-mobil | — | Not affected — mobile doesn't consume `/users`, `/customers`, `/contacts`, or `/admin/ingress-events`; these are admin-only surfaces mobile intentionally excludes (per `repos/repository-map.md`) | N/A |
 | caseflow-ai-service | — | Not affected — no FE/mobile call touches this service | N/A |
 
@@ -45,15 +45,16 @@ Internal ordering: `CONTRACT-001-INTEGRATION` depends on both `CONTRACT-001-BE` 
 ## Tasks
 
 ### BE
-- [ ] Convert `IngressEventAdminController.list` (`email/api/IngressEventAdminController.java`) to build a `PagedResponse<IngressEventAdminResponse>` via the existing `PagedResponse.from(Page<T>)` factory (`common/api/PagedResponse.java`) — same pattern already used by `CustomerController`/`ContactController`/`UserController` — instead of returning the raw Spring Data `Page`.
-- [ ] Grep for any other backend caller/test asserting the old `{content, pageable, ...}` shape for this endpoint and update it.
+- [x] Convert `IngressEventAdminController.list` (`email/api/IngressEventAdminController.java`) to build a `PagedResponse<IngressEventAdminResponse>` via the existing `PagedResponse.from(Page<T>)` factory (`common/api/PagedResponse.java`) — same pattern already used by `CustomerController`/`ContactController`/`UserController` — instead of returning the raw Spring Data `Page`.
+- [x] Grep for any other backend caller/test asserting the old `{content, pageable, ...}` shape for this endpoint and update it — `IngressEventAdminControllerTest` updated (`$.content` → `$.items`).
+- [x] (Discovered mid-implementation, not in original scope) `EmailIngressEventRepository.findFiltered`'s JPQL `(:param IS NULL OR ...)` pattern threw `PSQLException: could not determine data type of parameter $9` against real Postgres for the nullable `Instant from/to` bounds — this endpoint had apparently never been exercised against live data before (its only caller was calling the wrong URL). Replaced with a `Specification` built in `IngressEventAdminService` (the repository already implements `JpaSpecificationExecutor`), so an absent filter never binds a null parameter into the SQL at all. Verified against real data: no filters, `?status=FAILED`, `?mailboxId=2` all return `200` with the correct shape.
 
 ### FE
-- [ ] Fix `contact.service.ts`'s `getAll()` (and `getByCustomer()` if it hits the same endpoint) to unwrap `PagedResponse` — currently does `res.map(toContact)` directly on the raw response.
-- [ ] Fix `customerEmailSettings.service.ts`'s `listCustomers()` — an independent second consumer of `/api/customers` that was missed when `customer.service.ts` was patched this session; same `{items,...}` unwrap needed.
-- [ ] Fix `ingress.service.ts`: correct the request path from `/admin/ingress/events` to `/admin/ingress-events`, and update its response parsing to the `PagedResponse` `{items,...}` shape (coordinate with the BE task above).
-- [ ] Extract `role.service.ts`'s private `toArrayPayload` helper (handles `items`/`content`/`data`/`results`) into a shared module (`src/services/normalizers.ts` or a new `src/lib/apiList.ts`), and adopt it in every `getAll`/`list*` method currently doing an unguarded `res.map(...)` or a narrow `items`-only check — full file list in Notes below — so future backend shape drift fails loud in one place instead of silently per-file.
-- [ ] Add a `?? []` fallback wherever a narrow `items`-only check currently lacks one (`ticket.service.ts` `getAll`, `queue.service.ts`, `notification.service.ts`, `ingress.service.ts`) so a malformed response degrades to an empty list instead of throwing.
+- [x] Fix `contact.service.ts`'s `getAll()` (and `getByCustomer()` if it hits the same endpoint) to unwrap `PagedResponse` — currently does `res.map(toContact)` directly on the raw response.
+- [x] Fix `customerEmailSettings.service.ts`'s `listCustomers()` — an independent second consumer of `/api/customers` that was missed when `customer.service.ts` was patched this session; same `{items,...}` unwrap needed.
+- [x] Fix `ingress.service.ts`: correct the request path from `/admin/ingress/events` to `/admin/ingress-events`, and update its response parsing to the `PagedResponse` `{items,...}` shape (coordinate with the BE task above).
+- [x] Extract `role.service.ts`'s private `toArrayPayload` helper (handles `items`/`content`/`data`/`results`) into a shared module (`src/services/normalizers.ts` or a new `src/lib/apiList.ts`), and adopt it in every `getAll`/`list*` method currently doing an unguarded `res.map(...)` or a narrow `items`-only check — full file list in Notes below — so future backend shape drift fails loud in one place instead of silently per-file. Landed as `src/lib/apiList.ts`; also adopted in `user.service.ts`/`customer.service.ts` for consistency (not required, but they were the origin of the shared helper).
+- [x] Add a `?? []` fallback wherever a narrow `items`-only check currently lacks one (`ticket.service.ts` `getAll`, `queue.service.ts`, `notification.service.ts`, `ingress.service.ts`) so a malformed response degrades to an empty list instead of throwing.
 
 ### Mobile
 Not applicable — see Affected Repositories.
@@ -65,46 +66,46 @@ Not applicable — see Affected Repositories.
 ```yaml
 task_id: CONTRACT-001
 title: Backend/Frontend List-Response Shape Alignment
-status: PLANNED
+status: DONE
 
 tasks:
   - id: CONTRACT-001-BE
     repository: caseflow-be
     agent:
       provider: claude
-    status: READY
+    status: DONE
     depends_on: []
 
   - id: CONTRACT-001-FE
     repository: caseflow-fe
     agent:
-      provider: copilot
-    status: READY
+      provider: claude
+    status: DONE
     depends_on: []
 
   - id: CONTRACT-001-INTEGRATION
     repository: caseflow-central-brain
     agent:
-      provider: codex
-    status: BLOCKED
+      provider: claude
+    status: DONE
     depends_on:
       - CONTRACT-001-BE
       - CONTRACT-001-FE
 ```
 
 ## Acceptance Criteria
-- [ ] Customer Email Settings admin page's customer picker lists all customers (currently empty).
-- [ ] Wherever `contactService.getAll()` is consumed, it renders actual contacts, not an empty list.
-- [ ] Ingress Events admin page loads real data against the correct URL and shape (currently non-functional).
-- [ ] `GET /api/admin/ingress-events` returns `{items, page, size, totalElements, totalPages}`.
-- [ ] A shared list-unwrap utility exists and is used by every FE service in the audit list (Notes) instead of ad-hoc/duplicated logic.
-- [ ] `repos/backend/frontend-contract.md`'s Pagination section explicitly enumerates every paginated endpoint (users, customers, contacts, tickets, tickets/admin-pool, queue, notifications, admin report aggregate, admin/ingress-events) and notes which endpoints are deliberately bare arrays.
+- [x] Customer Email Settings admin page's customer picker lists all customers (currently empty).
+- [x] Wherever `contactService.getAll()` is consumed, it renders actual contacts, not an empty list.
+- [x] Ingress Events admin page loads real data against the correct URL and shape (currently non-functional). Verified via `curl` against real local data (260 events) — browser click-through not performed (Chrome extension was disconnected this session), but the exact same API-level method that caught the original users/customers bug was used here.
+- [x] `GET /api/admin/ingress-events` returns `{items, page, size, totalElements, totalPages}`.
+- [x] A shared list-unwrap utility exists and is used by every FE service in the audit list (Notes) instead of ad-hoc/duplicated logic.
+- [x] `repos/backend/frontend-contract.md`'s Pagination section explicitly enumerates every paginated endpoint (users, customers, contacts, tickets, tickets/admin-pool, queue, notifications, admin report aggregate, admin/ingress-events) and notes which endpoints are deliberately bare arrays.
 
 ## Validation
-- [ ] Backend tests — add/update a test asserting `/api/admin/ingress-events`'s response has an `items` field, not `content`/`pageable`.
-- [ ] Frontend tests — cover the 3 fixed services' list methods against a `{items,...}` fixture; unit-test the new shared unwrap utility against all known shapes (`items`/`content`/`data`/`results`, bare array, malformed input).
-- [ ] Mobile tests — N/A.
-- [ ] Integration validation — against a real local `caseflow-be`: exercise Customers, Users, Contacts, Customer Email Settings picker, and Ingress Events admin page; confirm no console errors and row counts match direct DB/`curl` counts (same method that caught the original bug).
+- [x] Backend tests — `IngressEventAdminControllerTest` updated and passing (13/13); asserts `$.items` not `$.content`.
+- [x] Frontend tests — added `apiList.test.ts` (8 cases), `contact.service.test.ts` (3), `ingress.service.test.ts` (3), extended `customerEmailSettings.service.test.ts` (+1) — 15 new tests, all passing. Full suite: 366/379 passing; the 13 failures are pre-existing and unrelated (confirmed via `git stash` against baseline before this task's changes).
+- [x] Mobile tests — N/A.
+- [x] Integration validation — against the real local `caseflow-be` (Docker): `curl`-verified `/api/users`, `/api/customers`, `/api/admin/ingress-events` (no filter, `?status=FAILED`, `?mailboxId=2`) all return `200` with the correct `{items,...}` shape and real data (7 users, 5 customers, 260 ingress events). Browser click-through was done earlier in the session for Users/Customers pages (via Chrome extension) confirming correct rendering; not repeated for Ingress Events / Contacts / Customer Email Settings since the extension was disconnected by that point in the session — the API-level verification is the same method that originally caught this bug class.
 
 ## Agent Instructions
 
@@ -121,6 +122,13 @@ Do not modify application code. Once BE and FE nodes are `DONE`, update `repos/b
 Per `workflows/TASK-LIFECYCLE.md` — not COMPLETE until BE, FE, and the integration/doc-update node are all `DONE`.
 
 ## Notes
+
+### Completion (2026-09-13)
+All three nodes done in a single same-day session (not split across separate agent handoffs as originally planned — the requesting user had Claude implement all three directly):
+- `caseflow-be` commit `e823913` — PagedResponse conversion + the Specification-based `findFiltered` fix (see BE Tasks above for why the latter was in scope).
+- `caseflow-fe` commit `8cd4313` — all four FE task items.
+- `caseflow-central-brain` — this file, plus `repos/backend/frontend-contract.md`'s Pagination section rewritten to enumerate every paginated vs. bare-array endpoint (including annotating the `/customers`, `/contacts`, `/users`, `/groups` one-line stub entries).
+- File moved from `tasks/active/` to `tasks/completed/` per `workflows/TASK-LIFECYCLE.md`.
 
 ### Full per-file FE audit (this task's research pass)
 **Confirmed broken now** (backend returns `PagedResponse`, FE assumes bare array or wrong URL):

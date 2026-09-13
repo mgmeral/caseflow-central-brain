@@ -166,7 +166,7 @@ The full ~29-code permission catalog lives in the backend's `identity/domain/Per
 
 ## Pagination
 
-`GET /api/tickets` and `GET /api/admin/ingress-events` return paginated responses.
+Cross-cutting convention (verified against source, 2026-09-13 — see [CONTRACT-001](../../tasks/completed/CONTRACT-001-LIST-RESPONSE-SHAPE-ALIGNMENT.md)): a `PagedResponse<T>` envelope, not a bare array:
 
 ```json
 {
@@ -178,7 +178,11 @@ The full ~29-code permission catalog lives in the backend's `identity/domain/Per
 }
 ```
 
-Pass `page`, `size`, `sort`, `direction` as query params. Defaults: page=0, size=20.
+Pass `page`, `size`, `sort`, `direction` as query params where supported. Defaults: page=0, size=20.
+
+**Endpoints returning `PagedResponse` (`{items,...}`):** `GET /api/users`, `GET /api/customers`, `GET /api/contacts`, `GET /api/tickets`, `GET /api/tickets/admin-pool`, `GET /api/queue`, `GET /api/notifications`, `GET /api/admin/reports/customers/tickets`, `GET /api/admin/ingress-events` (converted from a raw Spring Data `Page` — `{content, pageable, ...}` — by CONTRACT-001; this was the one outlier from the convention).
+
+**Endpoints returning a bare array (deliberately not paginated — small/reference-data sets):** `GET /api/groups`, `GET /api/roles` (+ `/roles/permissions`), `GET /api/group-types`, `GET /api/tags` (+ `/tags/all`, `/tickets/{id}/tags`), `GET /api/notes/by-ticket/{id}`, `GET /api/attachments/by-ticket/{id}`, `GET /api/emails/by-ticket/{id}`, `GET /api/tickets/{id}/email/thread` (+ `/dispatches`), `GET /api/tickets/{id}/history`, `GET /api/admin/mail-templates`, `GET /api/admin/mailboxes` (accepts no `page`/`size` params — any sent by a client are silently ignored), `GET /api/tickets/{id}/scheduled-emails`, `GET /api/admin/automation/rules`, `GET /api/admin/sla/policies`, `GET /api/admin/integrations/channels` (+ `/event-catalog`), `GET /api/transfers/by-ticket/{id}`, `GET /api/admin/reports/trend`, `GET /api/admin/reports/health`, `GET /api/contacts/by-customer/{id}`.
 
 ---
 
@@ -423,10 +427,10 @@ Stage-2 processing (routing, ticket creation) runs asynchronously via the retry 
 
 ### Other resources — see `docs/api-endpoints.md` for full shapes
 
-- `GET/POST/PUT/PATCH /api/customers` — `TICKET_READ`
-- `GET/POST/PUT/PATCH /api/contacts` — `TICKET_READ`
-- `GET/POST/PUT/PATCH /api/users` — `USER_MANAGE`
-- `GET/POST/PUT/PATCH /api/groups` — `GROUP_MANAGE`
+- `GET/POST/PUT/PATCH /api/customers` — `TICKET_READ` — GET (list) is paginated (see Pagination above)
+- `GET/POST/PUT/PATCH /api/contacts` — `TICKET_READ` — GET (list) is paginated; `GET /contacts/by-customer/{id}` is a bare array
+- `GET/POST/PUT/PATCH /api/users` — `USER_MANAGE` — GET (list) is paginated
+- `GET/POST/PUT/PATCH /api/groups` — `GROUP_MANAGE` — GET (list) is a bare array (not paginated)
 - `POST /api/tickets/{id}/notes` — `INTERNAL_NOTE_ADD`
 - `POST /api/tickets/{id}/assign` — `TICKET_ASSIGN`
 - `POST /api/tickets/{id}/transfer` — `TICKET_TRANSFER`
