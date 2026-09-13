@@ -4,7 +4,7 @@
 Bring `caseflow-mobil` into alignment with `caseflow-fe` and `caseflow-be`'s current contracts and behavior, and fix the one point where `caseflow-fe` itself is behind `caseflow-mobil`'s more correct implementation (session refresh). This task plans the work only — no code is implemented here.
 
 ## Status
-PLANNED
+READY (per `workflows/TASK-LIFECYCLE.md`: `ALIGN-001-BE` is `DONE`; `ALIGN-001-FE`, `ALIGN-001-MOBILE-CORE`, and `ALIGN-001-MOBILE-EXT` are all `READY` and unblocked — the parent reflects the lowest not-yet-satisfied child state)
 
 ## Priority
 P1 (contains one P0-severity finding — see `caseflow-fe` session refresh in Tasks below — bundled into an overall P1 alignment effort, not a product-blocking outage)
@@ -19,9 +19,9 @@ This task operationalizes the findings in [tasks/active/MOBILE-FE-ALIGNMENT.md](
 
 | Repository | Agent | Responsibility | Status |
 |---|---|---|---|
-| caseflow-be | Claude | Document exact field-level shapes for tags, Jira (ticket-level), and attachment-metadata endpoints (`TODO: Verify` items in `repos/backend/frontend-contract.md`) so mobile can build against them without guessing. **No backend code change is required** — these endpoints already exist and are already consumed correctly by `caseflow-fe`. | READY |
+| caseflow-be | Claude | Document exact field-level shapes for tags, Jira (ticket-level), and attachment-metadata endpoints (`TODO: Verify` items in `repos/backend/frontend-contract.md`) so mobile can build against them without guessing. **No backend code change is required** — these endpoints already exist and are already consumed correctly by `caseflow-fe`. | **DONE** (2026-09-13) |
 | caseflow-fe | GitHub Copilot | Implement a real `/auth/refresh`-based session renewal flow (currently stores the refresh token but never uses it), using `caseflow-mobil`'s `refreshSession()` pattern as the reference implementation. | READY |
-| caseflow-mobil | GitHub Copilot | Two independent tracks — see `ALIGN-001-MOBILE-CORE` (ready now) and `ALIGN-001-MOBILE-EXT` (waits on the BE documentation sub-task) below. | READY / BLOCKED (split — see Task Graph) |
+| caseflow-mobil | GitHub Copilot | Two independent tracks — see `ALIGN-001-MOBILE-CORE` (ready now) and `ALIGN-001-MOBILE-EXT` (was waiting on the BE documentation sub-task; unblocked now that `ALIGN-001-BE` is `DONE`) below. | READY / READY (split — see Task Graph) |
 | caseflow-ai-service | — | **Not affected.** None of the re-verified findings involve AI-assist features in mobile; mobile does not implement any AI capability today, and adding one is out of scope for this alignment task (it would be its own feature-shaped task — see `features/ai-ticket-assist.md`). | N/A |
 
 ## Dependencies
@@ -43,11 +43,12 @@ Internal ordering (see Task Graph): `ALIGN-001-MOBILE-EXT` depends on `ALIGN-001
 
 ## Tasks
 
-### BE
-- [ ] Read `integration/jira/api/JiraController.java` + DTOs and document the exact `/api/tickets/{ticketPublicId}/jira` request/response shape in `repos/backend/frontend-contract.md`.
-- [ ] Read `ticket/api/TicketTagController.java` + `Tag`/`TicketTag` DTOs and document `/api/tags` and `/api/tickets/{id}/tags` exact shapes.
-- [ ] Read the attachment-metadata shape returned on ticket/email detail responses (`AttachmentController`, `TicketEmailAttachmentController`) and document the exact fields (`previewUrl`/`downloadUrl`/etc. — already proven working via `caseflow-fe`'s `AttachmentViewerModal`) so mobile doesn't have to reverse-engineer them from FE's TypeScript types.
-- [ ] Update `repos/integration-map.md`'s `TODO: Verify` markers for these three endpoint groups once confirmed.
+### BE — DONE (2026-09-13)
+- [x] Read `integration/jira/api/JiraController.java` + DTOs and documented the exact `/api/tickets/{ticketPublicId}/jira` request/response shape. **Confirmed:** create/retry are gated by `canSendCustomerReply` (`CUSTOMER_REPLY_SEND`) **or** `PERM_INTEGRATION_CONFIG_MANAGE` — the same permission `ALIGN-002-BE` confirmed for notification-channel admin, now also confirmed here for Jira rather than assumed.
+- [x] Read `ticket/api/TicketTagController.java` + `Tag`/`TicketTag` DTOs and documented `/api/tags` and `/api/tickets/{id}/tags` exact shapes. **Finding:** two distinct permissions gate this one resource — tag *catalog* management (`/tags/all`, CRUD, activate/deactivate) requires `ADMIN_CONFIG`, while per-ticket tag add/remove requires `TICKET_TAG`. **Finding:** `TicketTagResponse` (a ticket's tag assignment) is a differently-shaped, flatter record than `TagResponse` (a catalog entry) — no nested object, and fields like `isActive`/`description` don't carry over.
+- [x] Read the attachment-metadata shape returned on ticket/email detail responses (`AttachmentController`, `TicketEmailAttachmentController`) and documented the exact fields. **Correction to this checklist's own guess:** the actual field is `downloadPath` (one ready-to-use relative URL) + `previewSupported` (boolean) — there are no separate `previewUrl`/`downloadUrl` fields as originally guessed here. Two parallel serving paths exist depending on attachment origin (direct-upload vs. email-sourced); the backend already picks the right one per-attachment in `downloadPath`.
+- [x] Updated `repos/integration-map.md` and `repos/backend/frontend-contract.md`'s `TODO: Verify` markers for these three endpoint groups — all now fully documented.
+- **Bug found outside this checklist's scope, flagged not fixed:** while confirming the `PERM_` prefix convention (needed to verify `TICKET_TAG`/`ADMIN_CONFIG`), found that `SlaPolicyController` and `AutomationRuleController` both gate on `PERM_SETTINGS_MANAGE`, which does not exist in `identity/domain/Permission.java` — meaning those 11 endpoints are structurally unreachable by any role, not merely lacking FE UI. See `repos/backend/frontend-contract.md`'s Permission Catalog section for detail. Recommend a separate small bug-fix task in `caseflow-be`; not fixed here since it's outside `ALIGN-001-BE`'s tags/Jira/attachments scope and this sub-task is documentation-only regardless.
 
 ### FE
 - [ ] Implement `refreshSession()`-equivalent logic in `caseflow-fe` (reference: `caseflow-mobil`'s `src/core/auth/session.ts` + `apiClient.ts` — in-flight-deduped, auto-retry-once-on-401).
@@ -61,10 +62,10 @@ Internal ordering (see Task Graph): `ALIGN-001-MOBILE-EXT` depends on `ALIGN-001
 - [ ] Add a notes-add API function + UI (currently notes are not addable anywhere in mobile), gated on `INTERNAL_NOTE_ADD`.
 - [ ] Add a claim/assign action to `InboxScreen` (currently explicitly read-only — confirmed no `onAssign`-equivalent exists), mirroring `caseflow-fe`'s `AdminPoolPage.tsx` (`AssignmentModal` + bulk-assign), gated on `ADMIN_POOL_VIEW` (already used for tab visibility) + `TICKET_ASSIGN`.
 
-### Mobile — Extended (blocked on `ALIGN-001-BE`)
-- [ ] Add tag display + add/remove on `CaseDetailScreen` (confirmed zero tag references anywhere in `caseflow-mobil/src` today, including in the `CaseDetail` type itself), gated on `TICKET_TAG`.
-- [ ] Add Jira status/create/retry UI on `CaseDetailScreen` (confirmed zero Jira references anywhere in mobile today), gated the same way `caseflow-fe`'s `JiraIntegrationCard` is.
-- [ ] Add attachment viewing (view/download) to the conversation thread view (confirmed zero attachment references anywhere in mobile today), mirroring `caseflow-fe`'s `AttachmentViewerModal` at a mobile-appropriate fidelity.
+### Mobile — Extended (unblocked — `ALIGN-001-BE` is DONE, exact shapes now in `repos/backend/frontend-contract.md`)
+- [ ] Add tag display + add/remove on `CaseDetailScreen` (confirmed zero tag references anywhere in `caseflow-mobil/src` today, including in the `CaseDetail` type itself), gated on `TICKET_TAG` for add/remove. (Tag *catalog* management — creating new tags — is a separate `ADMIN_CONFIG`-gated capability, out of scope here; this checklist item is about applying existing tags to a ticket, matching `caseflow-fe`'s `TicketTagsCard`, not `TagManagementPage`.)
+- [ ] Add Jira status/create/retry UI on `CaseDetailScreen` (confirmed zero Jira references anywhere in mobile today), gated the same way `caseflow-fe`'s `JiraIntegrationCard` is (`CUSTOMER_REPLY_SEND` for create/retry — the same permission that gates sending a reply, not a Jira-specific one, plus the `INTEGRATION_CONFIG_MANAGE` admin override). Render all three `JiraStatusResponse` states (`NOT_REQUESTED`, an in-flight/failed job, or a linked issue) — it's one combined shape, not three separate response types.
+- [ ] Add attachment viewing (view/download) to the conversation thread view (confirmed zero attachment references anywhere in mobile today), mirroring `caseflow-fe`'s `AttachmentViewerModal` at a mobile-appropriate fidelity. Use the `downloadPath` field verbatim (don't reconstruct attachment URLs client-side — the backend already picks the correct one of two possible path shapes per attachment) and use `previewSupported` to decide inline-render vs. forced download.
 
 ### AI
 Not applicable — see Affected Repositories above.
@@ -73,14 +74,14 @@ Not applicable — see Affected Repositories above.
 ```yaml
 task_id: ALIGN-001
 title: Mobile FE BE Alignment
-status: PLANNED
+status: READY
 
 tasks:
   - id: ALIGN-001-BE
     repository: caseflow-be
     agent:
       provider: claude
-    status: READY
+    status: DONE
     depends_on: []
 
   - id: ALIGN-001-FE
@@ -101,7 +102,7 @@ tasks:
     repository: caseflow-mobil
     agent:
       provider: copilot
-    status: BLOCKED
+    status: READY
     depends_on:
       - ALIGN-001-BE
 
@@ -145,7 +146,7 @@ Read `docs/architecture/frontend.md`, `repos/frontend/README.md`, and `caseflow-
 Read `docs/architecture/mobile.md`, `repos/backend/ticket-rules.md`, and `repos/backend/frontend-contract.md`. Match `caseflow-fe`'s permission-gating pattern exactly (`permissionCodes`, never `roleCode`). This sub-task does not need to wait for `ALIGN-001-BE` — the endpoints it uses (`/tickets/{id}/status`, `/transitions`, `/assign`, `/transfer`, `/notes`, `/queue`) are already fully documented and already proven working via `caseflow-fe`. Do not modify `caseflow-be`, `caseflow-fe`, or `caseflow-ai-service`.
 
 ### Copilot (ALIGN-001-MOBILE-EXT)
-Same repository/constraints as above, but **do not start until `ALIGN-001-BE` is DONE** — this sub-task's endpoints (tags, Jira, attachments) are the ones whose exact shapes are being confirmed there. Starting early risks building against a guessed shape.
+Same repository/constraints as above. `ALIGN-001-BE` is now `DONE` — read the Tags/Jira/Attachments sections of `repos/backend/frontend-contract.md` before writing any request/response typing; they call out several non-obvious shapes (e.g. `TicketTagResponse` vs. `TagResponse` are not the same shape; `JiraStatusResponse` is one combined record covering three states; attachment URLs come from the `downloadPath` field, never reconstructed client-side). Coordinate with `ALIGN-001-MOBILE-CORE` and, if in flight concurrently, with `ALIGN-002`'s mobile sub-tasks — all touch `CaseDetailScreen`.
 
 ### Codex (ALIGN-001-INTEGRATION)
 Do not modify any application repository. Once `ALIGN-001-BE`, `ALIGN-001-FE`, `ALIGN-001-MOBILE-CORE`, and `ALIGN-001-MOBILE-EXT` are all `DONE`, validate the combined change per the Validation section above, then update this task's `## Status` to `DONE` and move the file to `tasks/completed/`. Fold any new discoveries back into the relevant Central Brain docs in the same change.
@@ -173,6 +174,11 @@ Per `workflows/TASK-DEPENDENCIES.md`, ordering was derived from what each sub-ta
 - `ALIGN-001-MOBILE-CORE` needs nothing new from BE either — every endpoint it uses is already fully documented and already proven correct by `caseflow-fe`.
 - Only `ALIGN-001-MOBILE-EXT` genuinely needs `ALIGN-001-BE`'s output first, because those three endpoint groups are the ones marked `TODO: Verify` in Central Brain today.
 - This means three of the four implementation/documentation nodes can start immediately and in parallel — only one is actually blocked.
+
+### ALIGN-001-BE completion notes (2026-09-13)
+Confirmed exact shapes for all three endpoint groups against `caseflow-be` source — see the `### BE` checklist above for the finding-by-finding detail, now folded into `repos/backend/frontend-contract.md` and `repos/integration-map.md`. Two things worth calling out at the task level:
+- The permission-catalog work needed to confirm `TICKET_TAG`/`ADMIN_CONFIG` surfaced a genuine backend bug unrelated to this task's own scope: `SlaPolicyController` and `AutomationRuleController` both check for a `PERM_SETTINGS_MANAGE` authority that the `Permission` enum can never actually grant (it's not one of the enum's ~30 constants) — those 11 endpoints are unreachable by any role today. Flagged in Central Brain docs, not fixed (out of scope for a read-only documentation sub-task); worth its own small bug-fix task in `caseflow-be` at some point.
+- This task's original attachment-field checklist item guessed `previewUrl`/`downloadUrl` as the field names (carried over from the informal audit in `tasks/active/MOBILE-FE-ALIGNMENT.md`) — the actual backend field is a single `downloadPath` plus a `previewSupported` boolean. `ALIGN-001-MOBILE-EXT`'s checklist above has been corrected accordingly.
 
 ### Out of scope, explicitly
 - Push notifications and biometric unlock in mobile — unrelated to FE/BE alignment; both remain tracked as their own known gaps in `docs/architecture/mobile.md`.

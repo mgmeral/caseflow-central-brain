@@ -8,7 +8,7 @@
 > All shapes are derived from actual Java code, not assumptions.
 > When in doubt, verify against Swagger UI or the controller source.
 
-> **Verification status (2026-09-13):** the Auth Flow, Permission Catalog, Pagination, Error Response, Email Platform, Notification Channel Admin, Mail Templates, Scheduled Email, and Reports sections below were re-verified against current backend source and are current (the latter four as of the 2026-09-13 pass, done for `ALIGN-002-BE`). The backend has since grown a further set of additional controller groups — Jira integration, SLA policy CRUD, tags, automation rules — that are **not yet documented in per-field detail in this file**. See [../integration-map.md](../integration-map.md) for a verified summary of those remaining endpoint groups (base paths, permission codes where known, and what's `TODO: Verify`), and treat exact request/response shapes for them as unverified until confirmed against Swagger UI or the controller/DTO source directly. Also note: `MatchingStrategy`/`CONTACT_FIRST` (referenced further below in an older example) were **removed from the backend** — routing is customer-rule-based only, never contact-based — see [ADR-0001](../../decisions/0001-customer-based-email-routing.md).
+> **Verification status (2026-09-13):** the Auth Flow, Permission Catalog, Pagination, Error Response, Email Platform, Notification Channel Admin, Mail Templates, Scheduled Email, Reports, Tags, Jira (ticket-level), and Attachments sections below were all re-verified against current backend source and are current — Notification Channel Admin/Mail Templates/Scheduled Email/Reports as of the `ALIGN-002-BE` pass, and Tags/Jira/Attachments as of the `ALIGN-001-BE` pass, both on 2026-09-13. **Still not documented in per-field detail:** SLA policy CRUD, Jira *admin config* (as opposed to the ticket-level Jira section, which is documented), and automation rules — see [../integration-map.md](../integration-map.md) for what's known about them and `TODO: Verify` for the rest. Also note: `MatchingStrategy`/`CONTACT_FIRST` (referenced further below in an older example) were **removed from the backend** — routing is customer-rule-based only, never contact-based — see [ADR-0001](../../decisions/0001-customer-based-email-routing.md).
 
 ---
 
@@ -142,16 +142,30 @@ The backend enforces `PERM_<code>` Spring Security authorities. The FE uses the 
 | `TICKET_EMAIL_VIEW`         | `GET /tickets/{id}/email/thread` and detail endpoints              |
 | `TICKET_EMAIL_REPLY_SEND`   | `POST /tickets/{id}/email/reply`                                   |
 | `AI_ASSIST`                 | `/tickets/{id}/ai-summary`, `/ai-reply-draft`, `/ai-similar-cases`, `/ai-policy-guidance` |
-| `TICKET_TAG`                | Tag add/remove endpoints on a ticket                                |
+| `TICKET_TAG`                | Per-ticket tag add/remove (`POST`/`DELETE /tickets/{id}/tags/{tagId}`) — confirmed via `TicketAuthorizationService.canTagTicket`. **Distinct from tag catalog management**, which requires `ADMIN_CONFIG` instead (create/update/activate/deactivate a tag, and `GET /tags/all` — confirmed via `canManageTags`). A user can have one without the other: `TICKET_TAG` lets you tag/untag tickets from the existing active vocabulary; `ADMIN_CONFIG` lets you edit the vocabulary itself. |
+| `ADMIN_CONFIG`              | Tag catalog CRUD (create/update/activate/deactivate, `/tags/all`) — see `TICKET_TAG` note above for how the two relate. |
 | `USER_READ`                 | Read-only user endpoints (distinct from `USER_MANAGE`)              |
 | `ATTACHMENT_DELETE`         | Attachment delete endpoint                                          |
-| `INTEGRATION_CONFIG_MANAGE` | Jira/notification-channel admin config. Exact code confirmed as `PERM_INTEGRATION_CONFIG_MANAGE` via `NotificationChannelConfigController`'s class-level `@PreAuthorize`; assumed identical for the Jira admin-config controller (uses the same conceptual permission per `repos/integration-map.md`) but not independently re-read this pass — confirm if a Jira-specific discrepancy ever surfaces. |
+| `INTEGRATION_CONFIG_MANAGE` | Jira admin actions (create/retry, alongside `canSendCustomerReply`) and notification-channel admin config. Exact code confirmed as `PERM_INTEGRATION_CONFIG_MANAGE` — verified directly in both `JiraController` (`/create`, `/retry`) and `NotificationChannelConfigController` (class-level `@PreAuthorize`). |
 | `SCHEDULED_EMAIL_MANAGE`    | Scheduled/delayed outbound email. Exact code confirmed as `PERM_SCHEDULED_EMAIL_MANAGE` via `ScheduledEmailController`'s method-level `@PreAuthorize` on all three endpoints. |
-| `SETTINGS_MANAGE` (`TODO: Verify` exact code) | SLA policy CRUD (`/api/admin/sla/policies`) — **backend-only today, no FE UI built on it** |
 | `CUSTOMER_MANAGE`           | Customer create/update/activate/deactivate/delete (distinct from `TICKET_READ`-gated customer reads) |
 | `REPORT_VIEW` / `DATA_EXPORT` | Reports page + PDF export gating |
 
-The full ~29-code permission catalog lives in the backend's `identity/domain/Permission.java` enum — the table above adds the codes confirmed in the 2026-09-12 pass beyond what was previously documented here; it is not necessarily exhaustive. Verify against `GET /auth/me`'s actual `permissionCodes` response or the enum source when precision matters.
+**`PERM_` prefix rule (confirmed 2026-09-13, resolves every future "exact code string" question in one place):** `CaseFlowUserDetails.getAuthorities()` (`auth/CaseFlowUserDetails.java`) generates every Spring `GrantedAuthority` as `"PERM_" + p.name()` for each `Permission` enum constant the user holds — mechanically, systematically, no exceptions or per-permission overrides. So a client-facing `permissionCodes[]` entry (the raw enum name, e.g. `"TICKET_TAG"`) and its backend `@PreAuthorize("hasAuthority('PERM_TICKET_TAG')")` counterpart are always the same string with a `PERM_` prefix added — there is no case where the two diverge. The full, authoritative permission catalog is the `identity/domain/Permission.java` enum itself:
+
+```
+USER_MANAGE, ROLE_MANAGE, GROUP_MANAGE, ADMIN_CONFIG, TICKET_READ, ADMIN_POOL_VIEW,
+TICKET_ASSIGN, TICKET_TRANSFER, TICKET_STATUS_CHANGE, TICKET_CLOSE, TICKET_PRIORITY_CHANGE,
+CUSTOMER_REPLY_SEND, INTERNAL_NOTE_ADD, REPORT_VIEW, DATA_EXPORT, EMAIL_CONFIG_VIEW,
+EMAIL_CONFIG_MANAGE, EMAIL_OPERATIONS_VIEW, EMAIL_OPERATIONS_MANAGE, TICKET_EMAIL_VIEW,
+TICKET_EMAIL_REPLY_SEND, TICKET_TAG, INTEGRATION_CONFIG_MANAGE, INTEGRATION_JOB_VIEW,
+SCHEDULED_EMAIL_MANAGE, AI_ASSIST, CUSTOMER_MANAGE, GROUP_TYPE_MANAGE, USER_READ,
+ATTACHMENT_DELETE
+```
+
+That's the complete list — 30 values, no more. **This directly falsifies the SLA-policy and automation-rule permission entries below** — see the bug flagged there.
+
+**Bug found, not fixed (read-only documentation pass — flagging per this task's constraints, not modifying `caseflow-be`):** `SlaPolicyController` (all 6 endpoints) and `AutomationRuleController` (all 5 endpoints) both gate on `@PreAuthorize("hasAuthority('PERM_SETTINGS_MANAGE')")`. **`SETTINGS_MANAGE` does not exist in the `Permission` enum above.** Per the `PERM_` prefix rule just confirmed, `CaseFlowUserDetails.getAuthorities()` can only ever grant `"PERM_" + <an actual Permission enum constant>` — it is structurally impossible for any user, regardless of role, to ever hold a `PERM_SETTINGS_MANAGE` authority. **These eleven endpoints are not "no FE UI built on them" — they are unreachable via the REST API by anyone, full stop**, almost certainly a leftover from a permission rename/removal that missed these two controllers. This is stronger than the previous framing in this file ("backend-only today, no FE UI built on it") and changes the calculus for `ALIGN-002`'s SLA-admin exclusion: it's not just that `caseflow-fe` chose not to build a working admin page, the endpoints it would call are currently dead regardless. Recommend a small, separate bug-fix task in `caseflow-be` (likely: point both controllers at `ADMIN_CONFIG`, or add a real `SETTINGS_MANAGE` constant to `Permission.java` and seed it onto the appropriate role) — out of scope to fix here per this task's read-only constraint.
 
 ### Starter role defaults (seeded by V10 migration)
 
@@ -537,13 +551,80 @@ Confirmed 2026-09-13 against `CustomerReportController`/`AdminReportController`/
 
 PDF export (where FE offers it) is client-side (`html-to-image` + `jspdf` in `caseflow-fe`) — there is no backend-generated-file endpoint to call for it.
 
+### Tags (`/api/tags`, `/api/tickets/{ticketId}/tags`)
+
+Confirmed 2026-09-13 against `TagController`/`TicketTagController`/`TagService`/`TagResponse`/`TicketTagResponse`/`TagRequest`, for `ALIGN-001-BE`.
+
+**Two distinct permission surfaces on the same resource** — see the `TICKET_TAG`/`ADMIN_CONFIG` note in Permission Catalog above:
+
+| Method | Path | Permission | Body | Response |
+|---|---|---|---|---|
+| GET | `/api/tags` | `TICKET_READ` | — | `TagResponse[]` (active tags only, bare array) |
+| GET | `/api/tags/all` | `ADMIN_CONFIG` | — | `TagResponse[]` (active + inactive) |
+| GET | `/api/tags/{id}` | `TICKET_READ` | — | `TagResponse` |
+| POST | `/api/tags` | `ADMIN_CONFIG` | `TagRequest` | `TagResponse` 201 |
+| PUT | `/api/tags/{id}` | `ADMIN_CONFIG` | `TagRequest` | `TagResponse` |
+| PATCH | `/api/tags/{id}/activate`, `/deactivate` | `ADMIN_CONFIG` | — | `TagResponse` |
+| GET | `/api/tickets/{ticketId}/tags` | `TICKET_READ` (via `canReadTicket`) | — | `TicketTagResponse[]` — uses numeric ticket `id`, not `publicId` |
+| POST | `/api/tickets/{ticketId}/tags/{tagId}` | `TICKET_TAG` (via `canTagTicket`) | — | `TicketTagResponse` 201 |
+| DELETE | `/api/tickets/{ticketId}/tags/{tagId}` | `TICKET_TAG` (via `canTagTicket`) | — | 204 |
+
+`TagRequest`: `{ code, name, description?, color?, isActive? }`. `code` is normalized to upper-snake-case server-side, must match `^[A-Za-z0-9_]+$`, and is **immutable after creation** (silently ignored on update, same pattern as mail templates' `code`).
+
+`TagResponse` (catalog entry): `{ id, code, name, description, color, isActive, createdAt, updatedAt }`.
+
+`TicketTagResponse` (a tag assignment on a ticket — **not the same shape as `TagResponse`**): `{ tagId, tagCode, tagName, tagColor, taggedAt, taggedBy }`. There is no nested `tag: TagResponse` object — the tag's own catalog fields are flattened directly onto the assignment record with a `tag`-prefix, and `isActive`/`description`/`updatedAt` are not present on this shape at all (only on the catalog `TagResponse`).
+
+### Jira (`/api/tickets/{ticketPublicId}/jira`, `/api/admin/integrations/jira/*`)
+
+Confirmed 2026-09-13 against `JiraController`/`JiraIntegrationService`/`JiraStatusResponse` for `ALIGN-001-BE`. **Ticket-level Jira status/create/retry only** — the admin config endpoints (`/admin/integrations/jira/config`, `/test`) are out of `ALIGN-001-BE`'s scope and remain otherwise undocumented here beyond the base paths already in `repos/integration-map.md`.
+
+**Uses `ticketPublicId` (UUID)**, consistent with [ADR-0003](../../decisions/0003-sequential-ticket-numbers-public-uuid.md).
+
+| Method | Path | Permission | Response |
+|---|---|---|---|
+| GET | / | `@ticketAuth.canReadTicketByPublicId` (i.e. `TICKET_READ` + scope) | `JiraStatusResponse` |
+| POST | /create | `canSendCustomerReply` (i.e. `CUSTOMER_REPLY_SEND` + scope) **or** `PERM_INTEGRATION_CONFIG_MANAGE` | `JiraStatusResponse` 202 |
+| POST | /retry | Same as `/create` | `JiraStatusResponse` 202 |
+
+`JiraStatusResponse` is a single combined shape covering three distinct states — there is no separate "not linked" vs. "job in flight" vs. "linked" response type, just one record with fields populated differently per state:
+```
+{ jobId, jobStatus, attemptCount, lastError, nextAttemptAt, jiraIssueKey, jiraUrl, linkedAt }
+```
+- No Jira requested yet: `jobStatus: "NOT_REQUESTED"` (a synthetic value, not an `IntegrationJobStatus` enum member), everything else `null`/`0`.
+- Job pending/processing/failed: `jobStatus` is one of `PENDING`/`PROCESSING`/`FAILED`/`PERMANENTLY_FAILED`/`CANCELED` (the real `IntegrationJobStatus` enum); `lastError`/`nextAttemptAt` are only populated when `FAILED`. `jiraIssueKey`/`jiraUrl`/`linkedAt` stay `null`.
+- Linked (succeeded): `jobStatus: "SUCCEEDED"`, `jiraIssueKey`/`jiraUrl`/`linkedAt` populated, `lastError`/`nextAttemptAt` are `null` even if there was an earlier retry history.
+- `/create` returns `409` if a link or active job already exists (enforced service-side, not visible in the controller's own annotations — don't assume `/create` is safe to call speculatively without checking current status first).
+
+### Attachments (`/api/attachments`, `/api/tickets/{ticketPublicId}/emails/{emailId}/attachments`)
+
+Confirmed 2026-09-13 against `AttachmentController`/`TicketEmailAttachmentController`/`AttachmentMetadataMapper`/`AttachmentMetadataResponse` for `ALIGN-001-BE`.
+
+**Two parallel serving paths for the same metadata shape** — a client must not construct attachment URLs itself; always use the `downloadPath` field the backend returns.
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| POST | `/api/attachments/upload` (multipart) | `canSendCustomerReply` **or** `canAddInternalNote` | `?ticketId=` + `file` part; 25 MB max; 400 if empty/oversized |
+| GET | `/api/attachments/{id}` | `canReadAttachmentById` (→ parent ticket's `TICKET_READ` + scope) | Metadata only |
+| GET | `/api/attachments/by-ticket/{ticketId}` | `canReadTicket` | All attachments on a ticket, generic path |
+| GET | `/api/attachments/{id}/download` | `canReadAttachmentById` | Streams content; legacy/direct-upload path |
+| DELETE | `/api/attachments/{id}` | `canDeleteAttachmentById` (→ `ATTACHMENT_DELETE`) | 204 |
+| GET | `/api/tickets/{ticketPublicId}/emails/{emailId}/attachments` | `canViewTicketEmailByPublicId` (→ `TICKET_EMAIL_VIEW`) | List for one specific email |
+| GET | `/api/tickets/{ticketPublicId}/emails/{emailId}/attachments/{attachmentId}/content` | `canViewTicketEmailByPublicId` | Streams content; email-sourced path — 404 if the attachment doesn't actually belong to both that ticket and that email |
+
+`AttachmentMetadataResponse` (the one shape returned by every read endpoint above, and embedded as `TicketDetailResponse.attachments: AttachmentMetadataResponse[]`):
+```
+{ id, ticketId, ticketPublicId, emailId, fileName, contentType, size,
+  sourceType, downloadPath, previewSupported, uploadedAt }
+```
+- **`downloadPath` is a ready-to-use relative URL — always use it verbatim, never reconstruct it.** The backend picks one of the two path shapes above per-attachment: `/api/tickets/{ticketPublicId}/emails/{emailId}/attachments/{id}/content` when both `ticketPublicId` and `emailId` are present (email attachments once migrated to final storage), else `/api/attachments/{id}/download` (direct-upload or staging attachments). Hardcoding either path pattern client-side will break for the other attachment origin.
+- **`previewSupported`** (boolean) tells the client whether the content type is one of `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `application/pdf`, `text/plain` — safe to render inline (e.g. in an `<img>`/PDF viewer) rather than forcing a download. This exact same type set is also used server-side to decide `Content-Disposition: inline` vs. `attachment` on the email-sourced content endpoint — the two lists are maintained independently in source (`AttachmentMetadataMapper.PREVIEWABLE_TYPES` and `TicketEmailAttachmentController.INLINE_TYPES`) but currently identical; if a mobile attachment viewer ever needs this decision, trust the `previewSupported` field rather than re-deriving it from content type, in case the two lists ever drift.
+- `emailId` is `null` for direct-upload attachments (added via the ticket detail screen, not from an inbound email) — this is also how a client can tell the two attachment origins apart without inspecting `downloadPath`.
+
 ### Newer endpoint groups still summary-only (see [../integration-map.md](../integration-map.md), per-field shapes `TODO: Verify`)
 
-- SLA policies: `/api/admin/sla/policies` (CRUD) — no FE UI consumes this yet.
-- Tags: `/api/tags`, `/api/tickets/{id}/tags` — FE UI is real.
-- Jira: `/api/tickets/{ticketPublicId}/jira`, `/api/admin/integrations/jira/*` — FE UI is real.
-- Automation rules: backend controller (`AutomationRuleController`) exists; FE consumption status still `UNKNOWN: Not established in source repository`.
-- Automation rules: backend controller exists (`AutomationRuleController`); `UNKNOWN: FE consumption status`, not verified this pass.
+- SLA policies: `/api/admin/sla/policies` (CRUD) — **currently unreachable by any role, not just "no FE UI"** — see the `PERM_SETTINGS_MANAGE` bug flagged in Permission Catalog above.
+- Automation rules: backend controller (`AutomationRuleController`) exists, gated the same way (`PERM_SETTINGS_MANAGE` — same bug applies); FE consumption status still `UNKNOWN: Not established in source repository`. Per-field request/response shapes also still `TODO: Verify` — neither this permission bug nor the field shapes were in `ALIGN-001-BE`'s scope (tags/Jira/attachments only), so both remain open.
 
 ---
 
