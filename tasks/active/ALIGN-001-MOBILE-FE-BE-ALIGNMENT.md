@@ -175,6 +175,7 @@ Per `workflows/TASK-DEPENDENCIES.md`, ordering was derived from what each sub-ta
 - This means three of the four implementation/documentation nodes can start immediately and in parallel — only one is actually blocked.
 
 ### Out of scope, explicitly
-- AI-assist features in mobile (`EXPO_PUBLIC_ENABLE_AI` remains unwired) — confirmed still unconsumed, but building it is a separate, unscheduled feature-shaped task (see `features/ai-ticket-assist.md`), not part of aligning mobile to FE/BE's *existing* capabilities.
 - Push notifications and biometric unlock in mobile — unrelated to FE/BE alignment; both remain tracked as their own known gaps in `docs/architecture/mobile.md`.
-- SLA policy administration, notification-channel admin, mail templates, scheduled email, dashboard/reports in mobile — `caseflow-fe` has these, `caseflow-mobil` intentionally doesn't per its documented read-mostly scope; not included here without an explicit product decision to expand mobile's scope (see `tasks/active/MOBILE-FE-ALIGNMENT.md`'s "Next steps").
+- SLA policy administration in mobile — `caseflow-fe` itself has no working implementation (non-functional stub), so mobile lacking it is the aligned outcome, not a gap. See `ALIGN-002`'s Context for the full rationale.
+
+**Superseded by an explicit product decision:** the product decision this task's original note flagged as needed ("not included here without an explicit product decision to expand mobile's scope") has now been made — mobile's scope is expanding to full feature parity with `caseflow-fe`, including AI-assist, notification-channel admin, mail templates, scheduled email, dashboard/reports, and customer detail/contacts/reports. That work is tracked in [ALIGN-002-MOBILE-FULL-FEATURE-PARITY.md](ALIGN-002-MOBILE-FULL-FEATURE-PARITY.md) rather than folded into this task, to keep this task's already-`PLANNED` scope stable — see `ALIGN-002`'s Notes for why they're kept separate.
