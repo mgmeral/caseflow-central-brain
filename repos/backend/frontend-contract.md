@@ -8,7 +8,7 @@
 > All shapes are derived from actual Java code, not assumptions.
 > When in doubt, verify against Swagger UI or the controller source.
 
-> **Verification status (2026-09-12):** the Auth Flow, Permission Catalog, Pagination, Error Response, and Email Platform sections below were re-verified against current backend source and are current. The backend has since grown a substantial set of additional controller groups — Jira integration, SLA policy CRUD, tags, automation rules, dashboard/reports, mail templates, scheduled email, notification-channel config, in-app notifications — that are **not yet documented in per-field detail in this file**. See [../integration-map.md](../integration-map.md) for a verified summary of those endpoint groups (base paths, permission codes where known, and what's `TODO: Verify`), and treat exact request/response shapes for them as unverified until confirmed against Swagger UI or the controller/DTO source directly. Also note: `MatchingStrategy`/`CONTACT_FIRST` (referenced further below in an older example) were **removed from the backend** — routing is customer-rule-based only, never contact-based — see [ADR-0001](../../decisions/0001-customer-based-email-routing.md).
+> **Verification status (2026-09-13):** the Auth Flow, Permission Catalog, Pagination, Error Response, Email Platform, Notification Channel Admin, Mail Templates, Scheduled Email, and Reports sections below were re-verified against current backend source and are current (the latter four as of the 2026-09-13 pass, done for `ALIGN-002-BE`). The backend has since grown a further set of additional controller groups — Jira integration, SLA policy CRUD, tags, automation rules — that are **not yet documented in per-field detail in this file**. See [../integration-map.md](../integration-map.md) for a verified summary of those remaining endpoint groups (base paths, permission codes where known, and what's `TODO: Verify`), and treat exact request/response shapes for them as unverified until confirmed against Swagger UI or the controller/DTO source directly. Also note: `MatchingStrategy`/`CONTACT_FIRST` (referenced further below in an older example) were **removed from the backend** — routing is customer-rule-based only, never contact-based — see [ADR-0001](../../decisions/0001-customer-based-email-routing.md).
 
 ---
 
@@ -145,8 +145,8 @@ The backend enforces `PERM_<code>` Spring Security authorities. The FE uses the 
 | `TICKET_TAG`                | Tag add/remove endpoints on a ticket                                |
 | `USER_READ`                 | Read-only user endpoints (distinct from `USER_MANAGE`)              |
 | `ATTACHMENT_DELETE`         | Attachment delete endpoint                                          |
-| `INTEGRATION_CONFIG_MANAGE` | Jira/notification-channel admin config (`TODO: Verify` exact code string — FE's `usePermissions.ts` also carries an alias mapping to `PERM_INTEGRATION_CONFIG_MANAGE`) |
-| `SCHEDULED_EMAIL_MANAGE`    | Scheduled/delayed outbound email (`TODO: Verify` exact code string, same alias-mapping caveat as above) |
+| `INTEGRATION_CONFIG_MANAGE` | Jira/notification-channel admin config. Exact code confirmed as `PERM_INTEGRATION_CONFIG_MANAGE` via `NotificationChannelConfigController`'s class-level `@PreAuthorize`; assumed identical for the Jira admin-config controller (uses the same conceptual permission per `repos/integration-map.md`) but not independently re-read this pass — confirm if a Jira-specific discrepancy ever surfaces. |
+| `SCHEDULED_EMAIL_MANAGE`    | Scheduled/delayed outbound email. Exact code confirmed as `PERM_SCHEDULED_EMAIL_MANAGE` via `ScheduledEmailController`'s method-level `@PreAuthorize` on all three endpoints. |
 | `SETTINGS_MANAGE` (`TODO: Verify` exact code) | SLA policy CRUD (`/api/admin/sla/policies`) — **backend-only today, no FE UI built on it** |
 | `CUSTOMER_MANAGE`           | Customer create/update/activate/deactivate/delete (distinct from `TICKET_READ`-gated customer reads) |
 | `REPORT_VIEW` / `DATA_EXPORT` | Reports page + PDF export gating |
@@ -447,16 +447,102 @@ Stage-2 processing (routing, ticket creation) runs asynchronously via the retry 
 
 Response is always a backend-owned stable DTO (never the raw AI-service payload) and always degrades gracefully (`200` with `metadata.available=false`) rather than surfacing an AI-service error.
 
-### Newer endpoint groups (summary only — see [../integration-map.md](../integration-map.md), per-field shapes `TODO: Verify`)
+### Notification Channel Admin (`/api/admin/integrations/channels`) — `PERM_INTEGRATION_CONFIG_MANAGE`
+
+Confirmed 2026-09-13 against `NotificationChannelConfigController`/`NotificationChannelConfigService`/`NotificationChannelConfig`/`ChannelType`/`NotificationEventType`.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | / | — | `ChannelConfigResponse[]` (bare array, not paginated) |
+| GET | /{id} | — | `ChannelConfigResponse` |
+| POST | / | `ChannelConfigRequest` | `ChannelConfigResponse` 201 |
+| PUT | /{id} | `ChannelConfigRequest` | `ChannelConfigResponse` |
+| DELETE | /{id} | — | 204 |
+| GET | /event-catalog | — | `string[]` — canonical `NotificationEventType` names; **only these values are accepted** in `subscribedEvents` on create/update |
+
+`ChannelConfigRequest`: `{ name, channelType, webhookUrl, subscribedEvents: string[], scopeType, scopeId, enabled }`.
+- `channelType` is one of exactly two values: `SLACK` | `TEAMS` — despite this endpoint group being commonly called "Slack/Teams/webhook," there is **no third generic `WEBHOOK` channel type**; both existing types deliver via a webhook URL, that's not a separate type.
+- `webhookUrl` on **create**: required (400 if blank). On **update**: optional — a blank/omitted value **preserves the existing stored URL** rather than clearing it (`NotificationChannelConfigService.update`).
+- `scopeType` is `GLOBAL` (default) | `GROUP` | `CUSTOMER`; `scopeId` is required when `scopeType` is `GROUP`/`CUSTOMER` (the group/customer id), null for `GLOBAL`.
+
+`ChannelConfigResponse`: `{ id, name, channelType, enabled, webhookUrl, subscribedEvents, scopeType, scopeId, createdAt, updatedAt }`.
+- `webhookUrl` is **always the literal string `"****"`** — the real URL is never returned once stored, by design.
+- **`subscribedEvents` is a JSON-encoded string, not a native array** — e.g. `"[\"TICKET_CREATED\",\"TICKET_RESOLVED\"]"`. The client must `JSON.parse` it (confirmed both in the backend column type — `TEXT` — and in `caseflow-fe`'s `channelIntegration.service.ts`, which parses it with a try/catch-to-`[]` fallback). Do not treat it as an array in mobile without parsing.
+- The event-catalog endpoint returns a **bare `string[]`**, e.g. `["TICKET_CREATED", ...]` — not an array of objects. It also includes the `@Deprecated` `OUTBOUND_REPLY_FAILED` value (kept for backward compatibility with existing channel configs) alongside its replacement `OUTBOUND_EMAIL_FAILED` — both are currently "supported."
+
+### Mail Templates (`/api/admin/mail-templates`) — `PERM_EMAIL_CONFIG_VIEW` (read) / `PERM_EMAIL_CONFIG_MANAGE` (write)
+
+Confirmed 2026-09-13 against `MailTemplateController`/`MailTemplateService`/`MailTemplate`.
+
+| Method | Path | Permission | Body | Response |
+|---|---|---|---|---|
+| GET | / | VIEW | `?usageType=&activeOnly=&search=` | `MailTemplateResponse[]` (bare array, not paginated) |
+| GET | /{id} | VIEW | — | `MailTemplateResponse` |
+| POST | / | MANAGE | `MailTemplateRequest` | `MailTemplateResponse` 201 |
+| PUT | /{id} | MANAGE | `MailTemplateRequest` | `MailTemplateResponse` |
+| DELETE | /{id} | MANAGE | — | 204 (throws if `isBuiltIn=true` — see below) |
+| POST | /{id}/preview | MANAGE | `MailTemplatePreviewRequest` | `MailTemplatePreviewResponse` |
+| GET | /help | VIEW | — | `{ supportedPlaceholders: [{name, description}], usageTypes: [{value, label, customerVisible}] }` — **not currently called by `caseflow-fe`** (its Template Management page hardcodes an equivalent help panel client-side); optional for mobile to call, not required for parity |
+
+`MailTemplateRequest`: `{ code, name, subjectTemplate?, htmlTemplate, plainTextTemplate, isActive?, usageType?, description?, supportedPlaceholders?, customerVisible?, defaultStatusAfterSend? }`.
+- `code` is upper-cased server-side and **immutable after creation** — sending a different `code` on update is silently ignored (the update method never reads it).
+- `usageType` is a free-text field matching one of the `/help` endpoint's `usageTypes` values (`CUSTOMER_REPLY`, `ACKNOWLEDGEMENT`, `FOLLOW_UP`, `RESOLUTION`, `NEED_MORE_INFO`, `INTERNAL_UPDATE`) — not a backend-enforced enum; the backend stores whatever string is sent.
+- `htmlTemplate` is rejected with a 400 (`IllegalArgumentException`) if it contains `<script>`, `<iframe>`, or a `javascript:` URI — the only server-side content validation.
+- Built-in templates (`isBuiltIn=true`, Flyway-seeded) can be edited but **cannot be deleted** — `DELETE` throws `IllegalStateException` for them; deactivate via `isActive=false` instead. Templates created through this API always have `isBuiltIn=false`.
+
+`MailTemplateResponse`: `{ id, code, name, usageType, description, supportedPlaceholders, customerVisible, defaultStatusAfterSend, subjectTemplate, htmlTemplate, plainTextTemplate, isActive, isBuiltIn, createdAt, updatedAt }`. **No `canEdit`/`canDelete` fields exist on this response** — `caseflow-fe`'s `template.service.ts` reads `raw.canEdit`/`raw.canDelete` defensively but always falls back to `!isBuiltIn` in practice, since the backend never sends them. Mobile should derive edit/delete affordance from `isBuiltIn` directly rather than expecting those fields.
+
+`MailTemplatePreviewRequest`: `{ replyBody?, ticketRef?, mailboxName?, agentName?, signatureBlock? }` → `MailTemplatePreviewResponse`: `{ subject, html, text }`. Substitution is literal `{placeholder}` string replacement (not a templating engine); unknown placeholders are left as-is in the output.
+
+**Correction to a prior caveat:** `repos/integration-map.md` (pre-2026-09-13) carried a note that `caseflow-fe`'s `.env.example` documents template management as "empty/501 in real-mode backend deployments." That `.env.example` comment is **stale** — `MailTemplateController`/`Service` implement full real CRUD with no stub/501 path anywhere in current source. Treat that comment as outdated FE documentation, not a current backend limitation.
+
+### Scheduled Email (`/api/tickets/{ticketPublicId}/scheduled-emails`) — `PERM_SCHEDULED_EMAIL_MANAGE`
+
+Confirmed 2026-09-13 against `ScheduledEmailController`/`ScheduledEmailService`/`ScheduledEmailResponse`/`ScheduleEmailRequest`.
+
+**Uses `ticketPublicId` (UUID), not the numeric ticket `id`** — consistent with [ADR-0003](../../decisions/0003-sequential-ticket-numbers-public-uuid.md). This is the endpoint group the original mobile/FE alignment audit flagged as a future risk for mobile (which today only reads numeric-`id` endpoints) — any mobile implementation must resolve the ticket's `publicId` first.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | / | — | `ScheduledEmailResponse[]` (bare array; includes sent and canceled, not just pending) |
+| POST | / | `ScheduleEmailRequest` | `ScheduledEmailResponse` 201 |
+| DELETE | /{dispatchId} | — | `ScheduledEmailResponse` **200, not 204** — the canceled record is returned in the body, not an empty response |
+
+`ScheduleEmailRequest`: `{ mailboxId, sourceEventId?, toAddress?, subject, textBody, htmlBody?, sendNotBefore, templateId?, templateCode?, contentWasEdited? }`.
+- Recipient resolution: either `sourceEventId` (backend derives recipient + RFC 2822 In-Reply-To/References from that inbound event) or `toAddress` (required if `sourceEventId` absent; also usable as an override when both are given) must be provided.
+- `sendNotBefore` must be a future `Instant` (`@Future`-validated) — a past/present timestamp is rejected with 400.
+- `templateId` takes precedence over `templateCode` if both are set; if neither is set, a default `CUSTOMER_REPLY` template is used.
+
+`ScheduledEmailResponse`: `{ id, ticketId, mailboxId, fromAddress, resolvedToAddress, sourceEventId, subject, status, failureReason, failureCategory, sendNotBefore, createdAt, sentAt, canceledAt }`. Note `ticketId` here is the numeric id, even though the URL path uses `publicId` — the two identifiers coexist in this one response.
+
+### Reports (`/api/customers/{customerId}/reports`, `/api/admin/reports`) — `PERM_REPORT_VIEW`
+
+Confirmed 2026-09-13 against `CustomerReportController`/`AdminReportController`/`ReportingService` DTOs.
+
+**`caseflow-fe` only consumes two of the six available endpoints below** (`getCustomerReport`/`getAdminAggregateReport` in `report.service.ts`) — `/summary`, `/trend`, `/aging`, `/workload`, and `/health` are implemented backend-side but not called by any current FE UI. This is the same "backend-ready, frontend-consumption gap on both sides" pattern as `ai-similar-cases`/`ai-policy-guidance` (see AI Assist above) — **out of scope for mobile parity** per `ALIGN-002`'s Context (matching FE's *actual* reports UI, not exceeding it). Documented here for completeness in case a future task targets them on both clients together.
+
+| Method | Path | Consumed by FE? | Query params | Response |
+|---|---|---|---|---|
+| GET | `/api/customers/{customerId}/reports/tickets` | Yes | `from?`, `to?` (ISO-8601 `Instant`) | `CustomerTicketReportResponse` |
+| GET | `/api/admin/reports/customers/tickets` | Yes | `from?`, `to?`, `page=0`, `size=20`, `sortBy=name` (only `name`/default; `totalCount` sort is rejected — it's a computed field, not sortable at the DB level), `sortDir=asc` | `PagedResponse<AdminCustomerReportRow>` |
+| GET | `/api/admin/reports/summary` | No | `customerId?`, `from?`, `to?` | `AdminReportSummaryResponse` |
+| GET | `/api/admin/reports/trend` | No | `customerId?`, `from?`, `to?` | `TrendDataPoint[]` |
+| GET | `/api/admin/reports/aging` | No | `customerId?` | `AgingBucketsResponse` |
+| GET | `/api/admin/reports/workload` | No | — | `WorkloadSummaryResponse` |
+| GET | `/api/admin/reports/health` | No | — | `CustomerHealthSummary[]` |
+
+`CustomerTicketReportResponse`: `{ customerId, customerName, from, to, totalCount, openCount, newCount, inProgressCount, waitingCustomerCount, resolvedCount, closedCount, reopenedCount, byTag: [{tagId, tagCode, tagName, tagColor, count}] }`. Status buckets are backend-authoritative (e.g. `inProgressCount` = TRIAGED+ASSIGNED+IN_PROGRESS, `openCount` = all non-final statuses) — **do not re-derive them from raw status values client-side.**
+
+`AdminCustomerReportRow` (one per page item): `{ customerId, customerName, customerColorHex, totalCount, openCount, newCount, inProgressCount, waitingCustomerCount, resolvedCount, closedCount, reopenedCount }` — same bucket semantics as above, per customer.
+
+PDF export (where FE offers it) is client-side (`html-to-image` + `jspdf` in `caseflow-fe`) — there is no backend-generated-file endpoint to call for it.
+
+### Newer endpoint groups still summary-only (see [../integration-map.md](../integration-map.md), per-field shapes `TODO: Verify`)
 
 - SLA policies: `/api/admin/sla/policies` (CRUD) — no FE UI consumes this yet.
 - Tags: `/api/tags`, `/api/tickets/{id}/tags` — FE UI is real.
 - Jira: `/api/tickets/{ticketPublicId}/jira`, `/api/admin/integrations/jira/*` — FE UI is real.
-- Notification channels (Slack/Teams/webhook): `/api/admin/integrations/channels/*` — FE UI is real.
-- In-app notifications: `/api/notifications/*` — FE UI is real (polling).
-- Mail templates: `/api/admin/mail-templates/*` — FE UI is real.
-- Scheduled email: `/api/tickets/{publicId}/scheduled-emails` — FE UI is real.
-- Dashboard/reports: `/api/dashboard/stats`, `/api/customers/{id}/reports/tickets`, `/api/admin/reports/customers/tickets` — FE UI is real (PDF export is client-side).
+- Automation rules: backend controller (`AutomationRuleController`) exists; FE consumption status still `UNKNOWN: Not established in source repository`.
 - Automation rules: backend controller exists (`AutomationRuleController`); `UNKNOWN: FE consumption status`, not verified this pass.
 
 ---

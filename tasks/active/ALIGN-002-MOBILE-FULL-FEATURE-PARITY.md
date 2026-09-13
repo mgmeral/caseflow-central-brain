@@ -4,7 +4,7 @@
 Bring `caseflow-mobil` to feature and UX parity with `caseflow-fe` on every capability `ALIGN-001` deliberately left out of scope, so that mobile stops being a "read-mostly" client and instead covers substantially the same feature surface as the web frontend. This task plans the work only — no code is implemented here.
 
 ## Status
-PLANNED
+READY (per `workflows/TASK-LIFECYCLE.md`: `ALIGN-002-BE` is `DONE`; `ALIGN-002-MOBILE-CORE` and `ALIGN-002-MOBILE-EXT` are both `READY` and unblocked — the parent reflects the lowest not-yet-satisfied child state)
 
 ## Priority
 P1 (product-scope expansion, not a defect — no capability here is broken today, mobile simply doesn't have it yet)
@@ -25,8 +25,8 @@ See [docs/architecture/frontend.md](../../docs/architecture/frontend.md), [docs/
 
 | Repository | Agent | Responsibility | Status |
 |---|---|---|---|
-| caseflow-be | Claude | Document exact field-level shapes for notification-channel admin, mail-template admin, scheduled-email, and customer/admin reports endpoints (all currently `TODO: Verify` per `repos/integration-map.md` line 6) so mobile can build against them without reverse-engineering `caseflow-fe`'s TypeScript types. **No backend code change is required** — every endpoint already exists and is already consumed correctly by `caseflow-fe`. | READY |
-| caseflow-mobil | Copilot | Two independent tracks — see `ALIGN-002-MOBILE-CORE` (ready now, contracts already stable/documented) and `ALIGN-002-MOBILE-EXT` (waits on the BE documentation sub-task) below. | READY / BLOCKED (split — see Task Graph) |
+| caseflow-be | Claude | Document exact field-level shapes for notification-channel admin, mail-template admin, scheduled-email, and customer/admin reports endpoints (all currently `TODO: Verify` per `repos/integration-map.md` line 6) so mobile can build against them without reverse-engineering `caseflow-fe`'s TypeScript types. **No backend code change is required** — every endpoint already exists and is already consumed correctly by `caseflow-fe`. | **DONE** (2026-09-13) |
+| caseflow-mobil | Copilot | Two independent tracks — see `ALIGN-002-MOBILE-CORE` (ready now, contracts already stable/documented) and `ALIGN-002-MOBILE-EXT` (was waiting on the BE documentation sub-task; unblocked now that `ALIGN-002-BE` is `DONE`) below. | READY / READY (split — see Task Graph) |
 | caseflow-ai-service | — | **Not affected.** Mobile's new AI-assist UI calls `caseflow-be`'s existing AI-assist endpoints only, mirroring `caseflow-fe`'s and `caseflow-mobil`'s existing architectural boundary (neither client talks to `caseflow-ai-service` directly). | N/A |
 
 `caseflow-fe` has no row — every capability in this task is a mobile-only gap; the reference implementation already exists in `caseflow-fe` and needs no change.
@@ -50,12 +50,12 @@ Internal ordering (see Task Graph): `ALIGN-002-MOBILE-EXT` depends on `ALIGN-002
 
 ## Tasks
 
-### BE
-- [ ] Read `NotificationChannelController`/`IntegrationConfigController` (or equivalent — confirm actual class name) + DTOs and document the exact `/api/admin/integrations/channels/*` and `/api/admin/integrations/channels/event-catalog` request/response shapes, plus the exact `INTEGRATION_CONFIG_MANAGE` permission code string (currently `TODO: Verify` per `repos/backend/frontend-contract.md` line 148).
-- [ ] Read the mail-template controller + DTOs and document the exact `/api/admin/mail-templates/*` (CRUD + `/preview`) shapes. Permission codes (`EMAIL_CONFIG_VIEW`/`MANAGE`) are already known — only field shapes are `TODO: Verify`.
-- [ ] Read the scheduled-email controller + DTOs and document the exact `/api/tickets/{publicId}/scheduled-emails` (GET/POST/DELETE) shapes, plus the exact `SCHEDULED_EMAIL_MANAGE` permission code string (currently `TODO: Verify` per `repos/backend/frontend-contract.md` line 149).
-- [ ] Read the reports controllers + DTOs and document the exact `/api/customers/{id}/reports/tickets` and `/api/admin/reports/customers/tickets` shapes (permission codes `REPORT_VIEW`/`DATA_EXPORT` already known — only field shapes are `TODO: Verify`).
-- [ ] Update `repos/integration-map.md` and `repos/backend/frontend-contract.md`'s `TODO: Verify` markers for these four endpoint groups once confirmed.
+### BE — DONE (2026-09-13)
+- [x] Read `NotificationChannelConfigController` + DTOs and documented the exact `/api/admin/integrations/channels/*` and `/event-catalog` shapes, plus the confirmed `PERM_INTEGRATION_CONFIG_MANAGE` permission code string. **Finding:** `channelType` is only `SLACK`/`TEAMS` — there is no separate generic `WEBHOOK` channel type despite the common shorthand. **Finding:** `subscribedEvents` in the response is a JSON-encoded string, not a native array — must be parsed client-side.
+- [x] Read `MailTemplateController`/`Service` + DTOs and documented the exact `/api/admin/mail-templates/*` (CRUD + `/preview` + `/help`) shapes. **Finding:** the `.env.example` "empty/501 in real-mode" caveat in `caseflow-fe` is stale — full real CRUD exists, no stub path. **Finding:** response has no `canEdit`/`canDelete` fields; derive from `isBuiltIn` instead.
+- [x] Read `ScheduledEmailController`/`Service` + DTOs and documented the exact `/api/tickets/{ticketPublicId}/scheduled-emails` (GET/POST/DELETE) shapes, plus the confirmed `PERM_SCHEDULED_EMAIL_MANAGE` permission code string. **Confirmed:** uses `ticketPublicId` (UUID), not numeric `id` — mobile will need to resolve `publicId` for this feature specifically.
+- [x] Read `CustomerReportController`/`AdminReportController`/`ReportingService` DTOs and documented all six report endpoints' exact shapes (permission `PERM_REPORT_VIEW` confirmed). **Finding, scope-relevant:** `caseflow-fe` only consumes 2 of the 6 (`/customers/{id}/reports/tickets`, `/admin/reports/customers/tickets`) — `/summary`, `/trend`, `/aging`, `/workload`, `/health` are backend-ready but unconsumed by any client. Per this task's own parity principle (match FE's *actual* UI, don't exceed it — same as the SLA-admin exclusion), **`ALIGN-002-MOBILE-EXT`'s reports scope is corrected to the 2 FE-consumed endpoints only**; see that section below.
+- [x] Updated `repos/integration-map.md` and `repos/backend/frontend-contract.md`'s `TODO: Verify` markers for these four endpoint groups — all four now fully documented. Remaining `TODO: Verify` groups (Jira, SLA, tags, automation) are `ALIGN-001-BE`'s scope, untouched here.
 
 ### Mobile — Core (unblocked, contract already fully documented and proven by FE)
 - [ ] Add email compose/reply UI to the conversation thread view (`POST /tickets/{id}/email/reply`, `/reply/preview`), mirroring `caseflow-fe`'s `EmailReplyComposer` at a mobile-appropriate fidelity, gated on `TICKET_EMAIL_REPLY_SEND`.
@@ -64,11 +64,11 @@ Internal ordering (see Task Graph): `ALIGN-002-MOBILE-EXT` depends on `ALIGN-002
 - [ ] Add contacts CRUD under a customer (`/api/contacts`), mirroring `caseflow-fe`'s per-customer contacts management.
 - [ ] Add customer create/update UI (`/api/customers`), gated on `CUSTOMER_MANAGE` (distinct from the `TICKET_READ`-gated read-only list mobile already has).
 
-### Mobile — Extended (blocked on `ALIGN-002-BE`)
-- [ ] Add notification-channel admin (Slack/Teams/webhook CRUD + event-catalog view) mirroring `caseflow-fe`'s admin integrations page, gated on `INTEGRATION_CONFIG_MANAGE`.
-- [ ] Add mail-template admin (CRUD + live preview) mirroring `caseflow-fe`'s template management UI, gated on `EMAIL_CONFIG_VIEW`/`EMAIL_CONFIG_MANAGE`.
-- [ ] Add scheduled-email management (view/schedule/cancel a delayed reply send) on the ticket conversation view, gated on `SCHEDULED_EMAIL_MANAGE`. Note `repos/integration-map.md` line 30's deployment caveat: template management may return empty/501 in some real-mode backend deployments — handle that response gracefully rather than treating it as a UI bug.
-- [ ] Add per-customer and admin aggregate reports + client-side PDF export, mirroring `caseflow-fe`'s reports UI, gated on `REPORT_VIEW`/`DATA_EXPORT`.
+### Mobile — Extended (unblocked — `ALIGN-002-BE` is DONE, exact shapes now in `repos/backend/frontend-contract.md`)
+- [ ] Add notification-channel admin (Slack/Teams CRUD + event-catalog view — there is no separate generic "webhook" channel type, just `SLACK`/`TEAMS`) mirroring `caseflow-fe`'s admin integrations page, gated on `PERM_INTEGRATION_CONFIG_MANAGE`. Remember to `JSON.parse` the `subscribedEvents` string field — it is not a native array in the response.
+- [ ] Add mail-template admin (CRUD + live preview) mirroring `caseflow-fe`'s template management UI, gated on `PERM_EMAIL_CONFIG_VIEW`/`PERM_EMAIL_CONFIG_MANAGE`. Derive edit/delete affordance from `isBuiltIn` (built-in templates can be edited, not deleted) — the response has no `canEdit`/`canDelete` fields to read.
+- [ ] Add scheduled-email management (view/schedule/cancel a delayed reply send) on the ticket conversation view, gated on `PERM_SCHEDULED_EMAIL_MANAGE`. **Uses `ticketPublicId` (UUID), not the numeric ticket `id`** — resolve `publicId` before calling this endpoint group, per ADR-0003.
+- [ ] Add per-customer and admin aggregate reports + client-side PDF export, mirroring `caseflow-fe`'s **actual** reports UI, gated on `PERM_REPORT_VIEW`. Scope is exactly the two endpoints FE consumes (`/customers/{id}/reports/tickets`, `/admin/reports/customers/tickets`) — do **not** build UI for `/summary`, `/trend`, `/aging`, `/workload`, or `/health`; those are backend-ready but unconsumed by `caseflow-fe` itself, so building them in mobile would exceed FE parity rather than match it (same principle as the SLA-admin exclusion in Context).
 
 ### AI
 Not applicable — see Affected Repositories above.
@@ -77,14 +77,14 @@ Not applicable — see Affected Repositories above.
 ```yaml
 task_id: ALIGN-002
 title: Mobile Full Feature Parity
-status: PLANNED
+status: READY
 
 tasks:
   - id: ALIGN-002-BE
     repository: caseflow-be
     agent:
       provider: claude
-    status: READY
+    status: DONE
     depends_on: []
 
   - id: ALIGN-002-MOBILE-CORE
@@ -98,7 +98,7 @@ tasks:
     repository: caseflow-mobil
     agent:
       provider: copilot
-    status: BLOCKED
+    status: READY
     depends_on:
       - ALIGN-002-BE
 
