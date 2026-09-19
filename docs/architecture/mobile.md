@@ -51,3 +51,6 @@ Minimal — 3 test files (~4 test cases) total: permission-check logic, a query-
 ## Open questions
 - Whether push notifications, biometric-gated unlock, and read-write ticket workflow are still on the near-term roadmap, or the env flags/API hooks are leftover scaffolding from an earlier plan — see [docs/product/roadmap.md](../product/roadmap.md).
 - No mobile-specific rate limiting, offline-queue, or background-sync strategy defined yet.
+
+## Visual design gap (identified 2026-09-19)
+`src/shared/theme/` is a single 9-value flat color palette with no typography/spacing/elevation scale, no icon library, and only four shared components (`Screen`, `SectionCard`, `MetricCard`, `CenteredState`) — no `Badge`/`Chip`, variant `Button`, `Avatar`, or illustrated empty state. Status/priority/SLA-risk render as plain text rather than color-coded indicators. This is a visual-layer gap distinct from the feature-completeness gaps tracked in `ALIGN-001`/`ALIGN-002` — tracked in [tasks/active/MOBILE-001-UI-UX-VISUAL-MODERNIZATION.md](../../tasks/active/MOBILE-001-UI-UX-VISUAL-MODERNIZATION.md).
