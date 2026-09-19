@@ -4,7 +4,7 @@
 Bring `caseflow-mobil` to feature and UX parity with `caseflow-fe` on every capability `ALIGN-001` deliberately left out of scope, so that mobile stops being a "read-mostly" client and instead covers substantially the same feature surface as the web frontend. This task plans the work only — no code is implemented here.
 
 ## Status
-READY (per `workflows/TASK-LIFECYCLE.md`: `ALIGN-002-BE` is `DONE`; `ALIGN-002-MOBILE-CORE` and `ALIGN-002-MOBILE-EXT` are both `READY` and unblocked — the parent reflects the lowest not-yet-satisfied child state)
+IN_PROGRESS (per `workflows/TASK-LIFECYCLE.md`: `ALIGN-002-BE` is `DONE`; `ALIGN-002-MOBILE-CORE` is partially done as of 2026-09-19 — email reply and customer detail landed, AI-assist/contacts-CRUD/customer-CRUD did not; `ALIGN-002-MOBILE-EXT` is untouched, still `READY`. The parent reflects the lowest not-yet-satisfied child state.)
 
 ## Priority
 P1 (product-scope expansion, not a defect — no capability here is broken today, mobile simply doesn't have it yet)
@@ -26,7 +26,7 @@ See [docs/architecture/frontend.md](../../docs/architecture/frontend.md), [docs/
 | Repository | Agent | Responsibility | Status |
 |---|---|---|---|
 | caseflow-be | Claude | Document exact field-level shapes for notification-channel admin, mail-template admin, scheduled-email, and customer/admin reports endpoints (all currently `TODO: Verify` per `repos/integration-map.md` line 6) so mobile can build against them without reverse-engineering `caseflow-fe`'s TypeScript types. **No backend code change is required** — every endpoint already exists and is already consumed correctly by `caseflow-fe`. | **DONE** (2026-09-13) |
-| caseflow-mobil | Copilot | Two independent tracks — see `ALIGN-002-MOBILE-CORE` (ready now, contracts already stable/documented) and `ALIGN-002-MOBILE-EXT` (was waiting on the BE documentation sub-task; unblocked now that `ALIGN-002-BE` is `DONE`) below. | READY / READY (split — see Task Graph) |
+| caseflow-mobil | Claude (`ALIGN-002-MOBILE-CORE`, partial, this session) / unassigned (`ALIGN-002-MOBILE-EXT`) | Two independent tracks — see `ALIGN-002-MOBILE-CORE` (email reply + customer detail done; AI-assist, contacts CRUD, customer CRUD not done) and `ALIGN-002-MOBILE-EXT` (not started) below. | IN_PROGRESS / READY (split — see Task Graph) |
 | caseflow-ai-service | — | **Not affected.** Mobile's new AI-assist UI calls `caseflow-be`'s existing AI-assist endpoints only, mirroring `caseflow-fe`'s and `caseflow-mobil`'s existing architectural boundary (neither client talks to `caseflow-ai-service` directly). | N/A |
 
 `caseflow-fe` has no row — every capability in this task is a mobile-only gap; the reference implementation already exists in `caseflow-fe` and needs no change.
@@ -57,12 +57,12 @@ Internal ordering (see Task Graph): `ALIGN-002-MOBILE-EXT` depends on `ALIGN-002
 - [x] Read `CustomerReportController`/`AdminReportController`/`ReportingService` DTOs and documented all six report endpoints' exact shapes (permission `PERM_REPORT_VIEW` confirmed). **Finding, scope-relevant:** `caseflow-fe` only consumes 2 of the 6 (`/customers/{id}/reports/tickets`, `/admin/reports/customers/tickets`) — `/summary`, `/trend`, `/aging`, `/workload`, `/health` are backend-ready but unconsumed by any client. Per this task's own parity principle (match FE's *actual* UI, don't exceed it — same as the SLA-admin exclusion), **`ALIGN-002-MOBILE-EXT`'s reports scope is corrected to the 2 FE-consumed endpoints only**; see that section below.
 - [x] Updated `repos/integration-map.md` and `repos/backend/frontend-contract.md`'s `TODO: Verify` markers for these four endpoint groups — all four now fully documented. Remaining `TODO: Verify` groups (Jira, SLA, tags, automation) are `ALIGN-001-BE`'s scope, untouched here.
 
-### Mobile — Core (unblocked, contract already fully documented and proven by FE)
-- [ ] Add email compose/reply UI to the conversation thread view (`POST /tickets/{id}/email/reply`, `/reply/preview`), mirroring `caseflow-fe`'s `EmailReplyComposer` at a mobile-appropriate fidelity, gated on `TICKET_EMAIL_REPLY_SEND`.
-- [ ] Add AI-assist UI to `CaseDetailScreen` — ticket summary (`GET /ai-summary`) and reply-draft generation (`POST /ai-reply-draft`), gated on `AI_ASSIST`, wired to the currently-inert `EXPO_PUBLIC_ENABLE_AI` flag as the feature switch. Both endpoints always degrade gracefully server-side (`200` with `metadata.available=false`) — surface that state in the UI rather than treating it as an error.
-- [ ] Add a customer detail screen (currently list-only — no detail screen exists), reachable from the customer list and from a ticket's customer reference.
-- [ ] Add contacts CRUD under a customer (`/api/contacts`), mirroring `caseflow-fe`'s per-customer contacts management.
-- [ ] Add customer create/update UI (`/api/customers`), gated on `CUSTOMER_MANAGE` (distinct from the `TICKET_READ`-gated read-only list mobile already has).
+### Mobile — Core (unblocked, contract already fully documented and proven by FE) — PARTIAL (2026-09-19)
+- [x] Add email compose/reply UI to the conversation thread view, gated on `TICKET_EMAIL_REPLY_SEND`. **Simplified from `EmailReplyComposer`'s full fidelity**: no mailbox picker (auto-derived from the message being replied to, since a regular agent typically lacks `PERM_EMAIL_CONFIG_VIEW` to list mailboxes — see `caseflow-fe`'s own `useMailboxes` call), no template/quick-macro picker, no live preview step (`/reply/preview` is unused — sends straight to `/reply` with `contentWasEdited: true`), no schedule-send. Covers the core "type a reply and send it" action the user explicitly asked for; the richer authoring tools are a real, acknowledged gap.
+- [ ] Add AI-assist UI to `CaseDetailScreen`. **Not done** — deferred, not requested this pass.
+- [x] Add a customer detail screen, reachable from the customer list and from a ticket's customer reference (tapping the customer header on `CaseDetailScreen` now navigates there too, which wasn't explicitly asked for but was the obvious next link). Shows customer info, contacts (read-only), and that customer's recent tickets (reusing `GET /tickets?customerId=`, not the separate `/customers/{id}/reports/tickets` endpoint — simpler and already-proven, though it means this view isn't literally the same code path as FE's reports page).
+- [ ] Add contacts CRUD under a customer. **Not done — view-only.** Contacts are listed on the new customer detail screen but can't be created/edited from mobile; `PERM_CUSTOMER_MANAGE`-gated, same reasoning as the assign-picker scope-down in `ALIGN-001`.
+- [ ] Add customer create/update UI. **Not done**, same `CUSTOMER_MANAGE` reasoning.
 
 ### Mobile — Extended (unblocked — `ALIGN-002-BE` is DONE, exact shapes now in `repos/backend/frontend-contract.md`)
 - [ ] Add notification-channel admin (Slack/Teams CRUD + event-catalog view — there is no separate generic "webhook" channel type, just `SLACK`/`TEAMS`) mirroring `caseflow-fe`'s admin integrations page, gated on `PERM_INTEGRATION_CONFIG_MANAGE`. Remember to `JSON.parse` the `subscribedEvents` string field — it is not a native array in the response.
@@ -90,8 +90,8 @@ tasks:
   - id: ALIGN-002-MOBILE-CORE
     repository: caseflow-mobil
     agent:
-      provider: copilot
-    status: READY
+      provider: claude
+    status: IN_PROGRESS
     depends_on: []
 
   - id: ALIGN-002-MOBILE-EXT
@@ -148,6 +148,12 @@ Do not modify any application repository. Once `ALIGN-002-BE`, `ALIGN-002-MOBILE
 A task is not COMPLETE until all three implementation/documentation sub-tasks and integration validation have passed. Note that `ALIGN-002-MOBILE-CORE` can reach `DONE` well before `ALIGN-002-MOBILE-EXT` (which waits on `ALIGN-002-BE`) — the parent task's status stays `IN_PROGRESS` until every node is `DONE`, per `workflows/TASK-LIFECYCLE.md`.
 
 ## Notes
+
+### Implementation pass (2026-09-19) — ALIGN-002-MOBILE-CORE partial
+Implemented directly by Claude, same session as `ALIGN-001`'s full implementation and `MOBILE-001`'s visual redesign — see those tasks' own Notes for the ownership-override and verification-method details, which apply here too (not repeated). This session's `caseflow-mobil` changes for `ALIGN-002` specifically:
+- Email reply: `src/conversations/api/conversationsApi.ts` (`sendReply`), `src/conversations/hooks/useSendReply.ts`, `src/cases/components/ReplyComposerSheet.tsx`, wired into `CaseDetailScreen`'s Conversation section. See the Tasks checklist above for the specific fidelity cuts versus `caseflow-fe`'s `EmailReplyComposer` (no mailbox picker, no templates, no preview step, no schedule-send).
+- Customer detail: `src/customers/api/customersApi.ts` (`getCustomerById`, `getContactsByCustomer`), `src/customers/hooks/useCustomerDetail.ts`, `src/customers/screens/CustomerDetailScreen.tsx`. Required adding a `CustomersStack` navigator (Customers was previously a flat tab screen with no room for a detail route) — updated `RootNavigator.tsx` and `linking.ts` accordingly; the tab's route name changed from `Customers` to `CustomersStack` (deep-link config updated to match, but any external deep link hardcoding the old tab-level route name would need updating too — none found in this repo).
+- **Not attempted this pass, left for a follow-up**: AI-assist (`ai-summary`/`ai-reply-draft`), contacts CRUD, customer create/update. These are the more admin/back-office-leaning half of `ALIGN-002-MOBILE-CORE`'s original scope; the session's priority order (set by explicit user direction mid-session) was "your stated complaints first" — assign/notes/history (`ALIGN-001`), then tags/Jira/attachments (`ALIGN-001`), then customer detail + reply (`ALIGN-002` core), with `ALIGN-002-MOBILE-EXT`'s admin screens and AI-assist coming after. The session ended this pass at customer detail + reply; EXT and AI-assist were not reached.
 
 ### Why this is a separate task from ALIGN-001, not a rewrite of it
 `ALIGN-001` is already `PLANNED` and well-scoped around a disjoint capability set (status/assign/transfer/notes/tags/Jira/attachments, plus the FE session-refresh bug). Folding this task's scope into it would conflate two different kinds of change: `ALIGN-001` is closing gaps in mobile's *existing* product surface; this task is a *product-scope expansion* (per the user's explicit decision) into capabilities mobile never had. Keeping them separate also means `ALIGN-001` isn't held up by this task's larger scope, and either can complete independently.
